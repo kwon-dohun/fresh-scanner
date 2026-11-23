@@ -13,6 +13,7 @@ import onnxruntime as ort
 logger = logging.getLogger(__name__)
 
 MODEL_PATHS = [
+    Path(__file__).resolve().parents[3] / "models" / "fresh_scanner_korean_produce_int8.onnx",
     Path(__file__).resolve().parents[3] / "models" / "fresh_scanner_korean_produce.onnx",
     Path(__file__).resolve().parents[3] / "models" / "fresh_scanner_produce.onnx",
 ]
