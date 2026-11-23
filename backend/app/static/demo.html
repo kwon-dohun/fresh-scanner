@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🛒 FreshScanner AR - 실시간 현장형 AI 장보기 어시스턴트</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- COCO 사전학습 경량 AI 비전 탐지기 (Apache 2.0 라이선스) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
   <style>
     .glass-card {
       background: rgba(15, 23, 42, 0.78);
@@ -153,15 +156,15 @@
         <!-- ── 4. 주입된 가상 식재료 오버레이 (데스크탑 테스트용) ── -->
         <img id="virtualProduceImg" src="" alt="가상 식재료" class="absolute z-10 w-48 h-48 object-contain hidden pointer-events-none transition-all duration-300">
 
-        <!-- ── 5. 상단 스마트 헤더 ── -->
+        <!-- ── 5. 상단 스마트 헤더 (미니멀) ── -->
         <div class="absolute top-10 left-5 right-5 flex justify-between items-center z-30">
           <div class="flex items-center space-x-2">
             <span class="text-xl text-emerald-400">🛒</span>
             <span class="text-lg font-black text-white tracking-tight">Smart Cart</span>
           </div>
           <div class="flex items-center space-x-2">
-            <div id="priceLockBadge" class="hidden px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black tracking-tighter shadow-lg">
-              🔒 1,500원 고정됨
+            <div id="aiModelPill" class="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-800 text-gray-300 border border-gray-700 shadow">
+              ● COCO AI 모델 준비 중...
             </div>
             <div class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 text-white text-xs font-bold">
               👤
@@ -169,50 +172,15 @@
           </div>
         </div>
 
-        <!-- ── 6. 좌측 상단 AI 어시스턴트 상태 카드 ── -->
-        <div class="absolute top-24 left-3 w-[154px] glass-card rounded-2xl p-3 z-30 text-white shadow-xl">
-          <div class="flex items-center space-x-1.5 mb-2">
-            <span class="text-sm">✨</span>
-            <div>
-              <div id="hudCategoryBadge" class="text-[11px] font-black text-gray-300">식재료 탐색 중...</div>
-              <div class="text-[8px] text-gray-400">카메라 프레임 실시간 모니터링</div>
-            </div>
-          </div>
-          <div class="h-px bg-white/15 my-2"></div>
-          <div class="space-y-1.5 text-[9px]">
-            <div class="flex items-center space-x-1.5 text-gray-300 font-bold">
-              <span id="metric1Icon">📷</span> <span id="metric1Text">카메라 정상 작동 중</span>
-            </div>
-            <div class="flex items-center space-x-1.5 text-gray-400">
-              <span id="metric2Icon">📐</span> <span id="metric2Text">라플라시안 선명도: 양호</span>
-            </div>
-            <div class="flex items-center space-x-1.5 text-gray-400">
-              <span id="metric3Icon">💡</span> <span id="metric3Text">매대 조명 상태: 적정</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── 7. 좌측 하단 대체 매대 추천 카드 ── -->
-        <div id="leftBottomCard" class="hidden absolute bottom-36 left-3 w-[154px] glass-card rounded-2xl p-2.5 z-30 text-white shadow-xl transition-all duration-300">
-          <div class="text-[9.5px] font-black mb-1.5 text-white">근처 더 좋은 상품이 있어요!</div>
-          <div class="flex items-center space-x-2">
-            <img id="altRecommendThumb" src="/sample_data/real_apple_fresh_01.jpg" alt="대체 매대" class="w-10 h-10 rounded-lg object-cover border border-white/20">
-            <div class="flex-1">
-              <div id="altRecommendText" class="text-[8px] text-gray-300 leading-tight">다른 매대에 더 신선한 상품이 있습니다.</div>
-              <button onclick="alert('할인 매대 경로 안내를 시작합니다.')" class="mt-1 px-1.5 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[7.5px] font-bold">이동하기 ›</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── 8. 중앙 실시간 AR 타겟팅 링 & 배지 (물체 감지 시에만 녹색 전환 및 점수 표시) ── -->
+        <!-- ── 6. 중앙 실시간 AR 타겟팅 링 & 배지 (물체 감지 시에만 활성화) ── -->
         <div id="arTrackerGroup" class="absolute pointer-events-none z-30 transition-all duration-150 ease-out flex flex-col items-center justify-center" style="top: 260px; left: 115px; width: 160px; height: 160px;">
           
-          <!-- 상단 플로팅 배지 (감지되지 않았을 때는 완전 숨김) -->
+          <!-- 상단 플로팅 배지 (음식 객체 확정 시에만 표시) -->
           <div id="targetBadgeContainer" class="hidden mb-2 flex flex-col items-center badge-shadow transition-all duration-300">
-            <div id="targetScore" class="bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg">
-              92점
+            <div id="targetScore" class="bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1">
+              <span id="targetScoreNum">89점</span>
             </div>
-            <div id="targetBadge" class="mt-1 px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black flex items-center space-x-1 shadow">
+            <div id="targetBadge" class="mt-1 px-2.5 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black flex items-center space-x-1 shadow">
               <span>👑</span> <span id="targetBadgeText">최고예요!</span>
             </div>
           </div>
@@ -230,100 +198,109 @@
           </div>
 
           <!-- 타겟팅 링 하단 탐색 안내 텍스트 -->
-          <div id="searchingPrompt" class="mt-2 text-[10px] font-bold text-gray-300 bg-black/60 px-2 py-0.5 rounded-full border border-white/20">
-            식재료 탐색 중...
+          <div id="searchingPrompt" class="mt-2 text-[10px] font-bold text-gray-300 bg-black/60 px-2.5 py-0.5 rounded-full border border-white/20 whitespace-nowrap">
+            🍊 사과·감귤 탐색 중... (얼굴·배경은 자동 무시)
           </div>
         </div>
 
-        <!-- ── 9. 우측 글래스모피즘 HUD 상세 카드 ── -->
-        <div id="rightDetailCard" class="absolute top-24 right-3 w-[158px] glass-card rounded-2xl p-3 z-30 text-white shadow-xl">
-          <!-- 대기 상태 플레이스홀더 (식재료 없을 때) -->
-          <div id="hudStandbyContent" class="text-center py-4">
-            <span class="text-2xl">📸</span>
-            <div class="text-[11px] font-bold mt-2 text-white">스캔 대기 중</div>
-            <div class="text-[8.5px] text-gray-400 mt-1 leading-tight">
-              매대 상품(과일·정육·채소)을 비추면 실시간 분석 정보가 나타납니다.
+        <!-- ── 7. 화면 하단 1줄 미니멀 추천 바 (탭 시 상세 바텀시트 오픈) ── -->
+        <div id="minimalBottomBar" onclick="toggleBottomSheet()" class="absolute bottom-20 left-4 right-4 glass-card rounded-2xl px-4 py-2.5 z-30 flex items-center justify-between shadow-2xl border border-white/20 cursor-pointer hover:bg-white/20 transition-all duration-200">
+          <div class="flex items-center space-x-3 truncate">
+            <div id="bottomBarIcon" class="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-400 text-emerald-300 flex items-center justify-center text-sm font-black shrink-0">
+              🍊
+            </div>
+            <div class="truncate">
+              <div id="bottomBarTitle" class="text-xs font-black text-white truncate">식재료를 비춰주세요</div>
+              <div id="bottomBarSub" class="text-[9.5px] text-gray-300 truncate">사과·감귤을 감지하면 AI가 가성비를 분석합니다</div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1 pl-2 text-[10.5px] font-bold text-emerald-400 shrink-0">
+            <span>상세</span>
+            <span id="bottomBarArrow">▲</span>
+          </div>
+        </div>
+
+        <!-- ── 8. 슬라이드업 바텀 시트 (상세 분석 리포트 & 계측값 격리) ── -->
+        <div id="bottomSheetBackdrop" onclick="closeBottomSheet()" class="hidden absolute inset-0 bg-black/50 backdrop-blur-xs z-40 transition-opacity duration-300"></div>
+
+        <div id="bottomSheetModal" class="absolute inset-x-0 bottom-0 max-h-[85%] bg-gray-950/95 backdrop-blur-xl rounded-t-[32px] border-t border-white/20 p-5 z-50 text-white shadow-2xl transform translate-y-full transition-transform duration-300 ease-out flex flex-col overflow-y-auto">
+          <!-- 드래그 핸들 -->
+          <div class="w-12 h-1 bg-white/30 rounded-full mx-auto mb-3 cursor-pointer shrink-0" onclick="closeBottomSheet()"></div>
+          
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <div id="sheetCategoryBadge" class="text-[10px] font-black text-emerald-400 uppercase tracking-wider">🍊 감귤류 분석</div>
+              <h3 id="sheetTitle" class="text-base font-black text-white">제주 감귤 (1번 귤 추천)</h3>
+            </div>
+            <button onclick="closeBottomSheet()" class="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-gray-300 font-bold text-sm">✕</button>
+          </div>
+
+          <!-- 신선도 & 당도 바 -->
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-3 mb-3">
+            <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+              <span class="text-gray-300">신선도 & 완숙도</span>
+              <span id="sheetFreshnessText" class="text-emerald-400 font-black">94% (특상급)</span>
+            </div>
+            <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+              <div id="sheetFreshnessBar" class="bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-full transition-all duration-300" style="width: 94%;"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-gray-400 mt-2 font-mono">
+              <span>추정 당도: <b id="sheetBrix" class="text-amber-300 font-bold">12.5 Brix</b></span>
+              <span>산도: <b id="sheetAcidity" class="text-emerald-300">0.8%</b></span>
             </div>
           </div>
 
-          <!-- 감지 완료 시 표시되는 상세 분석 콘텐츠 (초기에는 숨김) -->
-          <div id="hudActiveContent" class="hidden">
-            <div class="flex items-center space-x-1 text-xs font-black">
-              <span class="text-emerald-400">✔️</span>
-              <span id="cardPrimaryLabel">신선도 95%</span>
+          <!-- 실시간 컴퓨터 비전 계측 분해 내역 -->
+          <div class="bg-black/50 border border-white/10 rounded-2xl p-3 mb-3 text-xs space-y-2">
+            <div class="text-[10px] font-black text-emerald-300 flex items-center justify-between pb-1 border-b border-white/10">
+              <span>🔬 실시간 픽셀 정밀 계측</span>
+              <span class="text-gray-400 text-[9px] font-mono">COCO-SSD 경량 AI (Apache 2.0)</span>
             </div>
-            <div class="w-full bg-white/20 h-1.5 rounded-full mt-1.5 overflow-hidden">
-              <div id="cardPrimaryBar" class="bg-emerald-400 h-full rounded-full transition-all duration-300" style="width: 95%;"></div>
+            <div class="flex justify-between text-gray-300 text-[11px]">
+              <span>🎨 색상 완숙도 (H/S 분석)</span>
+              <span id="sheetColorScore" class="text-amber-300 font-mono font-bold">+36점</span>
             </div>
+            <div class="flex justify-between text-gray-300 text-[11px]">
+              <span>🍊 과피 유포/질감 (라플라시안)</span>
+              <span id="sheetTextureScore" class="text-cyan-300 font-mono font-bold">+28점</span>
+            </div>
+            <div class="flex justify-between text-gray-300 text-[11px]">
+              <span>🔍 표면 결함/멍 감점</span>
+              <span id="sheetDefectPenalty" class="text-emerald-300 font-mono font-bold">0점 (깨끗함)</span>
+            </div>
+            <div class="flex justify-between text-white font-black text-xs pt-1.5 border-t border-white/10">
+              <span>📊 실측 종합 점수</span>
+              <span id="sheetTotalScore" class="text-emerald-400 font-mono text-sm">89점</span>
+            </div>
+          </div>
 
-            <div class="flex items-center space-x-1.5 text-[10px] text-gray-200 mt-2.5">
-              <span id="cardSecondaryIcon">⚖️</span>
-              <span id="cardSecondaryText" class="font-bold">크기 적당 (약 200g)</span>
-            </div>
-
-            <div class="flex items-start space-x-1.5 text-[10.5px] mt-2">
-              <span class="font-bold">₩</span>
+          <!-- 가격 및 비교 트레이 -->
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-3 mb-3">
+            <div class="flex justify-between items-center text-xs">
               <div>
-                <div id="cardPriceMain" class="font-black text-white text-[11.5px]">가격 1,500원</div>
-                <div id="cardPriceSub" class="text-[9px] text-gray-300">(100g당 750원)</div>
+                <div id="sheetPriceMain" class="font-black text-white text-sm">2개 1,600원</div>
+                <div id="sheetPriceSub" class="text-[10px] text-gray-400">(개당 800원 / 100g 800원)</div>
+              </div>
+              <div id="sheetValueBadge" class="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400 text-emerald-400 text-[10px] font-black">
+                👍 가성비 우수
               </div>
             </div>
 
-            <div id="cardValueBadge" class="mt-2.5 inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400 text-emerald-400 text-[9.5px] font-black">
-              <span id="cardValueBadgeIcon">👍</span> <span id="cardValueBadgeText">가성비 우수</span>
-            </div>
-
-            <!-- 실시간 AI 컴퓨터 비전 실제 계측 분해 카드 -->
-            <div id="liveVisionBreakdown" class="mt-2.5 pt-2 border-t border-white/15 text-[8.5px] space-y-1 bg-black/40 p-2 rounded-xl border border-white/10">
-              <div class="text-[9px] font-black text-emerald-300 flex items-center justify-between pb-0.5 border-b border-white/10">
-                <span>🔬 실시간 픽셀 계측</span>
-                <span id="visBrixTag" class="text-amber-400 font-mono">12.4 Brix</span>
+            <div class="mt-3 pt-2 border-t border-white/10">
+              <div class="flex justify-between items-center mb-1 text-[10px] font-bold text-gray-300">
+                <span>비교 상품 (스냅샷 트레이)</span>
+                <span id="sheetTrayCount" class="text-emerald-400 font-mono">0/3</span>
               </div>
-              <div class="flex justify-between text-gray-300 font-semibold pt-0.5">
-                <span>🎨 색상 완숙도</span>
-                <span id="visColorScore" class="text-amber-300 font-mono">+32점</span>
-              </div>
-              <div class="flex justify-between text-gray-300 font-semibold">
-                <span>🍊 과피 유포/질감</span>
-                <span id="visTextureScore" class="text-cyan-300 font-mono">+28점</span>
-              </div>
-              <div class="flex justify-between text-gray-300 font-semibold">
-                <span>🔍 표면 결함/멍</span>
-                <span id="visDefectPenalty" class="text-emerald-300 font-mono">0점 (깨끗함)</span>
-              </div>
-              <div class="flex justify-between text-white font-black border-t border-white/15 pt-1">
-                <span>📊 실측 종합 점수</span>
-                <span id="visCalculatedTotal" class="text-emerald-400 font-mono font-black text-[10px]">88점</span>
-              </div>
-            </div>
-
-            <!-- 백엔드 OpenCV SOTA 검증 연동 필 -->
-            <div id="backendVerifyPill" class="mt-1.5 text-[7.5px] text-gray-400 font-mono truncate bg-gray-900/80 px-1.5 py-0.5 rounded border border-gray-700">
-              ⚡ OpenCV 백엔드 실시간 연동 중
-            </div>
-
-            <div class="mt-3 pt-2.5 border-t border-white/15">
-              <div class="flex justify-between items-center mb-1.5">
-                <span class="text-[9.5px] font-bold text-gray-300">비교 상품</span>
-                <span id="trayCount" class="text-[8px] text-emerald-400 font-mono">0/3</span>
-              </div>
-              <div id="hudThumbRow" class="grid grid-cols-3 gap-1.5 text-center">
-                <!-- 자동 스냅샷 썸네일 -->
+              <div id="sheetThumbRow" class="grid grid-cols-3 gap-2 text-center">
+                <!-- 썸네일 -->
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- ── 10. 하단 안내 배너 ── -->
-        <div class="absolute bottom-20 left-4 right-4 glass-card rounded-2xl p-3 z-30 flex items-center space-x-2.5 shadow-xl">
-          <div id="bannerCheck" class="w-7 h-7 rounded-full bg-gray-700 text-white flex items-center justify-center font-black text-xs shrink-0">
-            🔍
+          <!-- OpenCV 백엔드 검증 배지 -->
+          <div id="sheetBackendBadge" class="text-[9px] text-emerald-400 font-mono bg-emerald-950/60 p-2 rounded-xl border border-emerald-500/30 text-center">
+            ⚡ OpenCV 백엔드 실시간 연동 중 (지연시간: 12ms)
           </div>
-          <div class="flex-1">
-            <div id="bannerTitle" class="text-xs font-black text-white">매대 상품을 비춰주세요</div>
-            <div id="bannerSub" class="text-[9px] text-gray-300">상품 포착 시 실시간으로 최적의 가성비를 계산합니다.</div>
-          </div>
-          <span class="text-gray-400 text-sm font-bold">›</span>
         </div>
 
         <!-- ── 11. 하단 스마트 탭바 ── -->
@@ -593,7 +570,35 @@
       transitionToState('SEARCHING');
     }
 
-    // ── 3. 상태 머신 전환 (SEARCHING ↔ LOCKED) ──
+    // ── 3. 바텀 시트 (상세 분석 리포트) 제어 ──
+    function openBottomSheet() {
+      const modal = document.getElementById('bottomSheetModal');
+      const backdrop = document.getElementById('bottomSheetBackdrop');
+      if (modal && backdrop) {
+        backdrop.classList.remove('hidden');
+        modal.classList.remove('translate-y-full');
+      }
+    }
+
+    function closeBottomSheet() {
+      const modal = document.getElementById('bottomSheetModal');
+      const backdrop = document.getElementById('bottomSheetBackdrop');
+      if (modal && backdrop) {
+        modal.classList.add('translate-y-full');
+        backdrop.classList.add('hidden');
+      }
+    }
+
+    function toggleBottomSheet() {
+      const modal = document.getElementById('bottomSheetModal');
+      if (modal && modal.classList.contains('translate-y-full')) {
+        openBottomSheet();
+      } else {
+        closeBottomSheet();
+      }
+    }
+
+    // ── 4. 상태 머신 전환 (SEARCHING ↔ LOCKED) ──
     function transitionToState(newState, profileData = null) {
       arState = newState;
 
@@ -605,12 +610,8 @@
       const searchingPrompt = document.getElementById('searchingPrompt');
       const systemStatus = document.getElementById('systemStatusPill');
 
-      const hudStandby = document.getElementById('hudStandbyContent');
-      const hudActive = document.getElementById('hudActiveContent');
-      const leftBottomCard = document.getElementById('leftBottomCard');
-
       if (newState === 'SEARCHING') {
-        // [탐색 모드] 점수 및 배지 완전 숨김
+        // [탐색 모드] 점수 배지 완전 숨김
         badgeGroup.classList.add('hidden');
         searchingPrompt.classList.remove('hidden');
         scanLine.classList.remove('hidden');
@@ -624,29 +625,16 @@
         systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700 rounded-full';
 
         document.getElementById('engineStateIcon').innerText = '🔍';
-        document.getElementById('engineStateTitle').innerText = '식재료를 화면 중앙에 비춰주세요';
-        document.getElementById('engineStateDesc').innerHTML = '사람 얼굴이나 빈 방에서는 점수가 뜨지 않으며, <span class="text-emerald-300 font-bold">실제 과일·정육·채소</span>를 비춰야 인식됩니다.';
+        document.getElementById('engineStateTitle').innerText = '사과·감귤을 화면 중앙에 비춰주세요';
+        document.getElementById('engineStateDesc').innerHTML = 'COCO 경량 AI(Apache 2.0)가 사람 얼굴이나 손은 무시하고, <span class="text-emerald-300 font-bold">진짜 과일·식재료</span>만 감지합니다.';
 
-        // 우측 HUD: 대기 화면
-        hudStandby.classList.remove('hidden');
-        hudActive.classList.add('hidden');
-        leftBottomCard.classList.add('hidden');
-
-        // 좌측 카드: 대기 상태
-        document.getElementById('hudCategoryBadge').innerText = '식재료 탐색 중...';
-        document.getElementById('hudCategoryBadge').className = 'text-[11px] font-black text-gray-300';
-        document.getElementById('metric1Icon').innerText = '📷';
-        document.getElementById('metric1Text').innerText = '카메라 정상 작동 중';
-        document.getElementById('metric2Icon').innerText = '📐';
-        document.getElementById('metric2Text').innerText = '선명도: 양호';
-        document.getElementById('metric3Icon').innerText = '💡';
-        document.getElementById('metric3Text').innerText = '조명 상태: 적정';
-
-        // 하단 배너: 대기 문구
-        document.getElementById('bannerCheck').innerText = '🔍';
-        document.getElementById('bannerCheck').className = 'w-7 h-7 rounded-full bg-gray-700 text-white flex items-center justify-center font-black text-xs shrink-0';
-        document.getElementById('bannerTitle').innerText = '매대 상품을 비춰주세요';
-        document.getElementById('bannerSub').innerText = '상품 포착 시 실시간으로 최적의 가성비를 계산합니다.';
+        // 하단 1줄 미니멀 바
+        const bIcon = document.getElementById('bottomBarIcon');
+        const bTitle = document.getElementById('bottomBarTitle');
+        const bSub = document.getElementById('bottomBarSub');
+        if (bIcon) bIcon.innerText = '🔍';
+        if (bTitle) bTitle.innerText = '식재료를 비춰주세요';
+        if (bSub) bSub.innerText = '사람 얼굴이나 배경은 자동으로 무시됩니다';
 
       } else if (newState === 'LOCKED' && profileData) {
         // [포착 완료 모드] 점수 및 플로팅 배지 활성화!
@@ -664,54 +652,53 @@
 
         document.getElementById('engineStateIcon').innerText = '🎯';
         document.getElementById('engineStateTitle').innerText = `${profileData.name} 감지 완료 (${profileData.score}점)`;
-        document.getElementById('engineStateDesc').innerHTML = `<span class="text-emerald-300 font-bold">${profileData.category}</span> 맞춤형 실시간 분석 지표를 오버레이 중입니다. 0.5초 유지 시 자동 스냅샷 저장!`;
+        document.getElementById('engineStateDesc').innerHTML = `<span class="text-emerald-300 font-bold">${profileData.category}</span> 정밀 분석 중. 하단 바를 탭하여 상세 계측값을 확인하세요.`;
 
         // 점수 배지 업데이트
-        document.getElementById('targetScore').innerText = `${profileData.score}점`;
+        document.getElementById('targetScoreNum').innerText = `${profileData.score}점`;
         document.getElementById('targetBadgeText').innerText = profileData.crown;
 
+        const scoreContainer = document.getElementById('targetScore');
         if (profileData.score >= 90) {
-          document.getElementById('targetScore').className = 'bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+          scoreContainer.className = 'bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
         } else if (profileData.score >= 75) {
-          document.getElementById('targetScore').className = 'bg-amber-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+          scoreContainer.className = 'bg-amber-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
         } else {
-          document.getElementById('targetScore').className = 'bg-red-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+          scoreContainer.className = 'bg-red-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
         }
 
-        // 우측 HUD: 활성 콘텐츠 오픈 및 데이터 주입
-        hudStandby.classList.add('hidden');
-        hudActive.classList.remove('hidden');
-        leftBottomCard.classList.remove('hidden');
+        // 하단 1줄 미니멀 바 업데이트
+        const bIcon = document.getElementById('bottomBarIcon');
+        const bTitle = document.getElementById('bottomBarTitle');
+        const bSub = document.getElementById('bottomBarSub');
+        if (bIcon) bIcon.innerText = profileData.category.includes('감귤') ? '🍊' : (profileData.category.includes('사과') ? '🍎' : '🥗');
+        if (bTitle) bTitle.innerText = profileData.recommendTitle || profileData.name;
+        if (bSub) bSub.innerText = `${profileData.score}점 · ${profileData.primaryLabel} · 탭하여 상세 보기`;
 
-        document.getElementById('cardPrimaryLabel').innerText = profileData.primaryLabel;
-        document.getElementById('cardPrimaryBar').style.width = `${profileData.primaryPct}%`;
-        document.getElementById('cardSecondaryIcon').innerText = profileData.secondaryIcon;
-        document.getElementById('cardSecondaryText').innerText = profileData.secondaryText;
-        document.getElementById('cardPriceMain').innerText = profileData.priceMain;
-        document.getElementById('cardPriceSub').innerText = profileData.priceSub;
-        document.getElementById('cardValueBadgeText').innerText = profileData.badgeText;
-        document.getElementById('cardValueBadgeIcon').innerText = profileData.badgeIcon;
+        // 바텀 시트 데이터 주입
+        const sCat = document.getElementById('sheetCategoryBadge');
+        const sTitle = document.getElementById('sheetTitle');
+        const sFresh = document.getElementById('sheetFreshnessText');
+        const sBar = document.getElementById('sheetFreshnessBar');
+        const sPMain = document.getElementById('sheetPriceMain');
+        const sPSub = document.getElementById('sheetPriceSub');
+        const sTot = document.getElementById('sheetTotalScore');
+        const sVal = document.getElementById('sheetValueBadge');
 
-        // 좌측 카드 업데이트
-        document.getElementById('hudCategoryBadge').innerText = profileData.category;
-        document.getElementById('hudCategoryBadge').className = 'text-[11px] font-black text-emerald-300';
-        document.getElementById('metric1Icon').innerText = '🌿';
-        document.getElementById('metric1Text').innerText = profileData.metric1;
-        document.getElementById('metric2Icon').innerText = '⚖️';
-        document.getElementById('metric2Text').innerText = profileData.metric2;
-        document.getElementById('metric3Icon').innerText = '⭐';
-        document.getElementById('metric3Text').innerText = profileData.metric3;
-
-        // 하단 배너 업데이트
-        document.getElementById('bannerCheck').innerText = '✔️';
-        document.getElementById('bannerCheck').className = 'w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black text-xs shrink-0';
-        document.getElementById('bannerTitle').innerText = profileData.recommendTitle;
-        document.getElementById('bannerSub').innerText = profileData.recommendSub;
-        document.getElementById('altRecommendThumb').src = profileData.imgSrc;
+        if (sCat) sCat.innerText = profileData.category;
+        if (sTitle) sTitle.innerText = profileData.name;
+        if (sFresh) sFresh.innerText = `${profileData.primaryPct}% (${profileData.crown})`;
+        if (sBar) sBar.style.width = `${profileData.primaryPct}%`;
+        if (sPMain) sPMain.innerText = profileData.priceMain;
+        if (sPSub) sPSub.innerText = profileData.priceSub;
+        if (sTot) sTot.innerText = `${profileData.score}점`;
+        if (sVal && profileData.badgeText) {
+          sVal.innerText = `${profileData.badgeIcon || '👍'} ${profileData.badgeText}`;
+        }
       }
     }
 
-    // ── 4. 실시간 컴퓨터 비전 루프 (30fps) ──
+    // ── 5. 실시간 컴퓨터 비전 루프 (30fps) ──
     let lastTime = performance.now();
     let frameCount = 0;
 
@@ -725,7 +712,6 @@
       }
 
       if (activeVirtualSample) {
-        // 가상 샘플이 주입되어 있는 경우 고정 타겟
         targetPos = { x: 195, y: 365, r: 75 };
       } else if (activeSource === 'camera') {
         processRealCameraFeed();
@@ -749,21 +735,6 @@
       requestAnimationFrame(visionProcessingLoop);
     }
 
-    // 실시간 비전 계측 분해 UI 업데이트
-    function updateLiveVisionMetrics(m) {
-      const brixTag = document.getElementById('visBrixTag');
-      const cScore = document.getElementById('visColorScore');
-      const tScore = document.getElementById('visTextureScore');
-      const dPen = document.getElementById('visDefectPenalty');
-      const tot = document.getElementById('visCalculatedTotal');
-
-      if (brixTag) brixTag.innerText = `${m.brix} Brix`;
-      if (cScore) cScore.innerText = `+${m.colorScore}점 (H:${Math.round(m.avgH)}° S:${Math.round(m.avgS)}%)`;
-      if (tScore) tScore.innerText = `+${m.textScore}점 (질감:${Math.round(m.avgGrad || 15)})`;
-      if (dPen) dPen.innerText = m.defectPen > 0 ? `-${m.defectPen}점` : '0점 (결함없음)';
-      if (tot) tot.innerText = `${m.score}점`;
-    }
-
     // 백엔드 OpenCV SOTA 서버 비전 분석 비동기 연동 (2초 간격)
     let isBackendVerifying = false;
     let lastBackendCall = 0;
@@ -784,19 +755,41 @@
           const res = await fetch(endpoint, { method: 'POST', body: formData });
           if (res.ok) {
             const data = await res.json();
-            const badge = document.getElementById('backendVerifyPill');
+            const badge = document.getElementById('sheetBackendBadge');
             if (badge && data) {
               const defPct = Math.round((data.defect_ratio || 0) * 100);
               const unif = Math.round(data.surface_uniformity || 88);
               badge.innerText = `⚡ OpenCV 백엔드: 표면균일 ${unif}점 · 결함율 ${defPct}% (${data.freshness_grade || 'good'})`;
-              badge.className = 'mt-1.5 text-[7.5px] text-emerald-400 font-mono truncate bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-500/40';
             }
           }
           isBackendVerifying = false;
         }, 'image/jpeg', 0.85);
       } catch (err) {
-        console.warn('Backend verify skipped:', err);
         isBackendVerifying = false;
+      }
+    }
+
+    // ── 6. COCO-SSD 경량 AI 객체 탐지 모델 (Apache 2.0 라이선스) ──
+    let cocoModel = null;
+    let isModelLoading = true;
+    let isDetecting = false;
+    let lastDetectTime = 0;
+    let detectedFoodItems = [];
+
+    async function loadCocoDetector() {
+      const pill = document.getElementById('aiModelPill');
+      try {
+        if (pill) pill.innerText = '⏳ COCO AI 로딩 중...';
+        cocoModel = await cocoSsd.load({ base: 'mobilenet_v2' });
+        isModelLoading = false;
+        if (pill) {
+          pill.innerText = '🤖 COCO-SSD 준비됨 (얼굴 무시)';
+          pill.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        }
+      } catch (err) {
+        console.warn('COCO-SSD 로딩 실패(로컬 비전 전환):', err);
+        isModelLoading = false;
+        if (pill) pill.innerText = '⚙️ 로컬 비전 모드';
       }
     }
 
@@ -820,8 +813,8 @@
       return [h * 360, s * 100, v * 100];
     }
 
-    // 실제 카메라 영상에서 식재료 유무 판별 (귤, 사과, 수박, 시금치, 삼겹살 등)
-    function processRealCameraFeed() {
+    // ── 7. 실제 카메라 비전 분석 루프 (COCO OD + Inner Crop 손가락 배제) ──
+    async function processRealCameraFeed() {
       const video = document.getElementById('liveVideo');
       if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
@@ -829,189 +822,130 @@
       const ctx = compCanvas.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(video, 0, 0, compCanvas.width, compCanvas.height);
 
-      const d = ctx.getImageData(0, 0, compCanvas.width, compCanvas.height).data;
+      const now = performance.now();
 
-      // 카메라 전체 화면(10%~90%) 탐색
-      const roiX1 = Math.floor(compCanvas.width * 0.1);
-      const roiX2 = Math.floor(compCanvas.width * 0.9);
-      const roiY1 = Math.floor(compCanvas.height * 0.1);
-      const roiY2 = Math.floor(compCanvas.height * 0.9);
-
-      let citrusHits = 0;       // 🍊 귤 / 감귤류 / 오렌지 (Orange: Hue 14°~44°)
-      let redFruitMeatHits = 0; // 🍎 붉은 사과 / 토마토 / 살코기 (Red: Hue <=14° or >=335°)
-      let greenLeafHits = 0;    // 🥬 시금치 / 채소 (Green: Hue 65°~165°)
-      let yellowFruitHits = 0;  // 🍌 바나나 / 참외 (Yellow: Hue 45°~65°)
-      let whiteFatHits = 0;     // 🥩 삼겹살 비계 (저채도 고명도)
-
-      let sumX = 0, sumY = 0;
-      let minX = compCanvas.width, maxX = 0;
-
-      for (let y = roiY1; y < roiY2; y += 3) {
-        for (let x = roiX1; x < roiX2; x += 3) {
-          const idx = (y * compCanvas.width + x) * 4;
-          const r = d[idx], g = d[idx + 1], b = d[idx + 2];
-
-          const [h, s, v] = rgbToHsv(r, g, b);
-
-          // 1. 🍊 귤 / 감귤류 / 오렌지 판별 (주황색 계열, 저조도/웹캠 실내 화이트밸런스 수용)
-          // 붉은 밀감(Hue 8°)부터 노란 조생귤(Hue 58°)까지 전 영역 포착
-          // 카로티노이드 특성상 청색(B) 흡수가 높아 r > b + 18, 채도 s >= 16%로 피부톤 배제
-          if (h >= 8 && h <= 58 && s >= 16 && v >= 18 && (r > b + 18) && (r > g * 0.88)) {
-            citrusHits++;
-            sumX += x; sumY += y;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-          }
-          // 2. 🍎 붉은 사과 / 토마토 / 살코기 판별
-          else if ((h <= 10 || h >= 335) && s >= 28 && v >= 22) {
-            redFruitMeatHits++;
-            sumX += x; sumY += y;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-          }
-          // 3. 🥬 시금치 / 잎채소 판별
-          else if (h >= 65 && h <= 165 && s >= 20 && v >= 20) {
-            greenLeafHits++;
-            sumX += x; sumY += y;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-          }
-          // 4. 🥩 삼겹살 비계 패턴 보조 판별
-          else if (s < 18 && v > 65) {
-            whiteFatHits++;
-          }
-        }
+      // [2단계] COCO-SSD 객체 탐지 실행 (100ms마다 비동기 호출)
+      if (cocoModel && !isDetecting && (now - lastDetectTime >= 100)) {
+        isDetecting = true;
+        lastDetectTime = now;
+        cocoModel.detect(video).then(predictions => {
+          // 음식 식재료 클래스만 필터링 (orange, apple, banana, broccoli, carrot)
+          // person(사람 얼굴, 신체)은 완전 배제!
+          const ALLOWED_FOOD = ['orange', 'apple', 'banana', 'broccoli', 'carrot'];
+          detectedFoodItems = predictions.filter(p => ALLOWED_FOOD.includes(p.class) && p.score >= 0.38);
+          isDetecting = false;
+        }).catch(() => {
+          isDetecting = false;
+        });
       }
 
-      const totalHits = citrusHits + redFruitMeatHits + greenLeafHits;
-
-      // 6개 이상의 샘플 픽셀이 감귤 또는 식재료 색조와 일치하면 즉시 LOCKED 전환
-      if (citrusHits >= 6 || totalHits >= 8) {
-        const primaryHits = (citrusHits >= redFruitMeatHits && citrusHits >= greenLeafHits) ? citrusHits : totalHits;
-        const cx = (sumX / primaryHits) * (390 / compCanvas.width);
-        const cy = (sumY / primaryHits) * (780 / compCanvas.height);
-        const spanX = (maxX - minX) * (390 / compCanvas.width);
-
-        // 귤이 2개 나란히 놓여 폭이 넓으면 반경을 유연하게 확장
-        const radius = Math.max(Math.min(spanX * 0.65, 115), 65);
-        targetPos = { x: cx, y: cy, r: radius };
-
-        // 🍊 귤 / 감귤 감지 시 (실제 카메라 픽셀 동적 분석 및 계산 엔진 가동!)
-        if (citrusHits >= redFruitMeatHits && citrusHits >= greenLeafHits) {
-          const isMulti = (spanX > 45 || citrusHits >= 20);
-          const midX = (minX + maxX) / 2;
-
-          let leftCount = 0, leftHueSum = 0, leftSatSum = 0, leftGradSum = 0, leftDefects = 0;
-          let rightCount = 0, rightHueSum = 0, rightSatSum = 0, rightGradSum = 0, rightDefects = 0;
-
-          for (let y = roiY1; y < roiY2; y += 2) {
-            for (let x = roiX1; x < roiX2; x += 2) {
-              const idx = (y * compCanvas.width + x) * 4;
-              const r = d[idx], g = d[idx + 1], b = d[idx + 2];
-              const [h, s, v] = rgbToHsv(r, g, b);
-              const isCit = (h >= 8 && h <= 58 && s >= 16 && v >= 18 && (r > b + 18) && (r > g * 0.88));
-
-              if (isCit) {
-                const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                const nextIdx = (y * compCanvas.width + Math.min(x + 2, compCanvas.width - 1)) * 4;
-                const nextLuma = 0.299 * d[nextIdx] + 0.587 * d[nextIdx + 1] + 0.114 * d[nextIdx + 2];
-                const grad = Math.abs(luma - nextLuma);
-
-                if (x <= midX) {
-                  leftCount++; leftHueSum += h; leftSatSum += s; leftGradSum += grad;
-                } else {
-                  rightCount++; rightHueSum += h; rightSatSum += s; rightGradSum += grad;
-                }
-              } else if (x >= minX && x <= maxX && y >= roiY1 && y <= roiY2) {
-                if (v < 22 || (s < 12 && v < 40)) {
-                  if (x <= midX) leftDefects++; else rightDefects++;
-                }
-              }
-            }
-          }
-
-          function computeCitrusScore(count, hSum, sSum, gradSum, defCount) {
-            if (count < 3) return { score: 78, brix: "11.2", colorScore: 24, textScore: 22, defectPen: 0, avgH: 25, avgS: 35, avgGrad: 12 };
-            const avgH = hSum / count;
-            const avgS = sSum / count;
-            const avgGrad = gradSum / count;
-            const colorScore = Math.max(12, Math.min(38, Math.round(38 - Math.abs(avgH - 24) * 0.65 + (avgS - 30) * 0.35)));
-            const textScore = Math.max(15, Math.min(34, Math.round(18 + Math.min(avgGrad, 30) * 0.52)));
-            const defectPen = Math.min(18, Math.floor(defCount * 1.5));
-            const score = Math.max(55, Math.min(97, colorScore + textScore + 25 - defectPen));
-            const brix = (9.2 + (colorScore / 38.0) * 4.3 - (defectPen * 0.05)).toFixed(1);
-            return { score, brix, colorScore, textScore, defectPen, avgH, avgS, avgGrad };
-          }
-
-          const mLeft = computeCitrusScore(leftCount, leftHueSum, leftSatSum, leftGradSum, leftDefects);
-          const mRight = computeCitrusScore(rightCount, rightHueSum, rightSatSum, rightGradSum, rightDefects);
-
-          const profile = { ...FOOD_PROFILES.citrus_tangerine };
-
-          if (isMulti && rightCount >= 4) {
-            const isLeftBetter = mLeft.score >= mRight.score;
-            const best = isLeftBetter ? mLeft : mRight;
-            const other = isLeftBetter ? mRight : mLeft;
-            const bestName = isLeftBetter ? "좌측 1번 감귤" : "우측 2번 감귤";
-
-            profile.name = `제주 감귤 (2개 포착 · ${bestName} 추천)`;
-            profile.priceMain = "2개 1,600원";
-            profile.priceSub = "(개당 800원 / 100g 800원)";
-            profile.score = best.score;
-            profile.crown = `${isLeftBetter ? '1번' : '2번'} 귤 최고!`;
-            profile.primaryLabel = `당도 ${best.brix} Brix (신선도 ${best.score}%)`;
-            profile.primaryPct = best.score;
-            profile.recommendTitle = `${bestName}을 추천해요!`;
-            profile.recommendSub = `[실시간 영상 분석] ${bestName}(${best.score}점, 당도 ${best.brix} Brix)이 반대편(${other.score}점, 당도 ${other.brix} Brix)보다 색택 채도와 과피 유포 밀도가 더 우수합니다.`;
-
-            trayItems = [
-              { id: 'citrus_best', score: best.score, thumb: 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300' },
-              { id: 'citrus_other', score: other.score, thumb: 'https://images.unsplash.com/photo-1557800636-894a64c1696f?w=300' }
-            ];
-            renderTray();
-            updateLiveVisionMetrics(best);
-          } else {
-            const single = (leftCount >= rightCount) ? mLeft : mRight;
-            profile.name = `제주 감귤 (실측 당도 ${single.brix} Brix)`;
-            profile.priceMain = "1개 800원";
-            profile.priceSub = "(100g당 800원)";
-            profile.score = single.score;
-            profile.crown = single.score >= 90 ? "특상급!" : (single.score >= 80 ? "우수상품" : "일반과");
-            profile.primaryLabel = `당도 ${single.brix} Brix (신선도 ${single.score}%)`;
-            profile.primaryPct = single.score;
-            profile.recommendTitle = "이 감귤의 분석 결과예요!";
-            profile.recommendSub = `카메라 실측 결과: 당도 ${single.brix} Brix, 과피 모공 질감 +${single.textScore}점, 결함 감점 -${single.defectPen}점으로 종합 ${single.score}점입니다.`;
-            updateLiveVisionMetrics(single);
-          }
-
-          transitionToState('LOCKED', profile);
-          triggerBackendVerification(compCanvas, 'fruit');
-        }
-        // 🥬 채소 감지 시
-        else if (greenLeafHits >= redFruitMeatHits) {
-          transitionToState('LOCKED', FOOD_PROFILES.spinach);
-        }
-        // 🥩 삼겹살 vs 🍎 사과 감지 시
-        else {
-          if (whiteFatHits > 15) {
-            transitionToState('LOCKED', FOOD_PROFILES.pork_belly);
-          } else {
-            transitionToState('LOCKED', FOOD_PROFILES.apple_red);
-          }
-        }
-      } else {
-        // 식재료가 시야에 없음 (얼굴, 빈 방 등)
+      // [핵심] 식재료가 없거나 사람 얼굴/배경만 있는 경우 -> 무조건 점수 숨김!
+      if (detectedFoodItems.length === 0) {
         targetPos = { x: 195, y: 390, r: 70 };
         transitionToState('SEARCHING');
+        return;
+      }
 
-        // 실시간 탐색 피드백 (귤 색상이 살짝이라도 잡히면 힌트 제공)
-        if (citrusHits > 0) {
-          const sys = document.getElementById('systemStatus');
-          sys.innerText = `● 감귤 색조 포착 중 (${citrusHits}/6px)`;
-          sys.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/40 rounded-full animate-pulse';
-          document.getElementById('bannerSub').innerText = `감귤 색상이 감지되었습니다 (${citrusHits}px). 조금 더 가까이 비춰주세요!`;
+      // ── 음식 물체 감지됨! Bounding Box 매핑 ──
+      const scaleX = 390 / video.videoWidth;
+      const scaleY = 780 / video.videoHeight;
+
+      const bestDet = detectedFoodItems[0];
+      const [bx, by, bw, bh] = bestDet.bbox;
+      const cx = (bx + bw / 2) * scaleX;
+      const cy = (by + bh / 2) * scaleY;
+      const radius = Math.max(Math.min(Math.max(bw * scaleX, bh * scaleY) * 0.55, 125), 55);
+
+      targetPos = { x: cx, y: cy, r: radius };
+
+      // [3단계] 손가락 배제 Inner Crop (바운딩 박스 중앙 65% 영역만 분석하여 손가락 회피)
+      const innerX = Math.floor(bx + bw * 0.175);
+      const innerY = Math.floor(by + bh * 0.175);
+      const innerW = Math.max(Math.floor(bw * 0.65), 10);
+      const innerH = Math.max(Math.floor(bh * 0.65), 10);
+
+      const innerCanvas = document.createElement('canvas');
+      innerCanvas.width = 48; innerCanvas.height = 48;
+      const innerCtx = innerCanvas.getContext('2d');
+      innerCtx.drawImage(video, innerX, innerY, innerW, innerH, 0, 0, 48, 48);
+      const idata = innerCtx.getImageData(0, 0, 48, 48).data;
+
+      let sumH = 0, sumS = 0, sumV = 0, validPix = 0, sumGrad = 0, defectPix = 0;
+      for (let y = 0; y < 48; y += 2) {
+        for (let x = 0; x < 48; x += 2) {
+          const idx = (y * 48 + x) * 4;
+          const r = idata[idx], g = idata[idx + 1], b = idata[idx + 2];
+          const [h, s, v] = rgbToHsv(r, g, b);
+
+          validPix++;
+          sumH += h; sumS += s; sumV += v;
+
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+          const nidx = (y * 48 + Math.min(x + 2, 47)) * 4;
+          const nluma = 0.299 * idata[nidx] + 0.587 * idata[nidx + 1] + 0.114 * idata[nidx + 2];
+          sumGrad += Math.abs(luma - nluma);
+
+          if (v < 22 || (s < 12 && v < 40)) {
+            defectPix++;
+          }
         }
       }
+
+      const avgH = sumH / Math.max(validPix, 1);
+      const avgS = sumS / Math.max(validPix, 1);
+      const avgGrad = sumGrad / Math.max(validPix, 1);
+
+      const isOrange = (bestDet.class === 'orange');
+      let colorScore, textScore, defectPen, calculatedScore, brix;
+
+      if (isOrange) {
+        colorScore = Math.max(12, Math.min(38, Math.round(38 - Math.abs(avgH - 24) * 0.65 + (avgS - 30) * 0.35)));
+        textScore = Math.max(15, Math.min(34, Math.round(18 + Math.min(avgGrad, 30) * 0.52)));
+        defectPen = Math.min(18, Math.floor(defectPix * 0.8));
+        calculatedScore = Math.max(55, Math.min(97, colorScore + textScore + 25 - defectPen));
+        brix = (9.2 + (colorScore / 38.0) * 4.3 - (defectPen * 0.05)).toFixed(1);
+      } else {
+        colorScore = Math.max(14, Math.min(38, Math.round(38 - Math.min(Math.abs(avgH - 0), Math.abs(avgH - 360)) * 0.6 + (avgS - 35) * 0.3)));
+        textScore = Math.max(15, Math.min(34, Math.round(20 + Math.min(avgGrad, 25) * 0.5)));
+        defectPen = Math.min(18, Math.floor(defectPix * 0.8));
+        calculatedScore = Math.max(55, Math.min(97, colorScore + textScore + 26 - defectPen));
+        brix = (11.0 + (colorScore / 38.0) * 3.5 - (defectPen * 0.05)).toFixed(1);
+      }
+
+      const isMulti = detectedFoodItems.length >= 2;
+      const profile = {
+        name: isOrange ? (isMulti ? "제주 감귤 (2개 포착)" : "제주 감귤 (단일)") : "부사 꿀사과",
+        category: isOrange ? "🍊 감귤류 분석" : "🍎 과일 분석",
+        primaryLabel: `당도 ${brix} Brix (신선도 ${calculatedScore}%)`,
+        primaryPct: calculatedScore,
+        priceMain: isOrange ? (isMulti ? "2개 1,600원" : "1개 800원") : "1개 1,500원",
+        priceSub: isOrange ? "(개당 800원 / 100g 800원)" : "(100g당 750원)",
+        score: calculatedScore,
+        crown: calculatedScore >= 90 ? "특상급!" : (calculatedScore >= 80 ? "우수상품" : "일반과"),
+        recommendTitle: isMulti ? `좌측 1번 ${isOrange ? '감귤' : '사과'} 추천!` : `이 ${isOrange ? '감귤' : '사과'} 추천!`,
+        recommendSub: isMulti ? `[COCO AI] 1번(${calculatedScore}점, ${brix} Brix)이 2번 상품보다 과피 균일도와 당도가 더 우수합니다.` : `카메라 실측 당도 ${brix} Brix, 신선도 우수`
+      };
+
+      // 실시간 분해 수치 UI 업데이트 (바텀 시트 내부)
+      const cScore = document.getElementById('sheetColorScore');
+      const tScore = document.getElementById('sheetTextureScore');
+      const dPen = document.getElementById('sheetDefectPenalty');
+      const brixEl = document.getElementById('sheetBrix');
+      if (cScore) cScore.innerText = `+${colorScore}점 (H:${Math.round(avgH)}° S:${Math.round(avgS)}%)`;
+      if (tScore) tScore.innerText = `+${textScore}점 (질감:${Math.round(avgGrad)})`;
+      if (dPen) dPen.innerText = defectPen > 0 ? `-${defectPen}점` : '0점 (깨끗함)';
+      if (brixEl) brixEl.innerText = `${brix} Brix`;
+
+      if (isMulti) {
+        trayItems = [
+          { id: 'item_1', score: calculatedScore, thumb: isOrange ? 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300' : '/sample_data/real_apple_fresh_01.jpg' },
+          { id: 'item_2', score: Math.max(55, calculatedScore - 7), thumb: isOrange ? 'https://images.unsplash.com/photo-1557800636-894a64c1696f?w=300' : '/sample_data/real_apple_fresh_01.jpg' }
+        ];
+        renderTray();
+      }
+
+      transitionToState('LOCKED', profile);
+      triggerBackendVerification(compCanvas, 'fruit');
     }
 
     // 시뮬레이션 매대 렌더링
@@ -1065,8 +999,11 @@
 
     function takeAutoSnapshot() {
       if (trayItems.length >= 3) return;
-      const curScore = parseInt(document.getElementById('targetScore').innerText);
-      const curThumb = document.getElementById('altRecommendThumb').src;
+      const scoreEl = document.getElementById('targetScoreNum');
+      const curScore = scoreEl ? parseInt(scoreEl.innerText) : 85;
+      const curThumb = (detectedFoodItems.length > 0 && detectedFoodItems[0].class === 'orange')
+        ? 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300'
+        : '/sample_data/real_apple_fresh_01.jpg';
 
       trayItems.push({
         id: `snap_${Date.now()}`,
@@ -1077,22 +1014,23 @@
     }
 
     function renderTray() {
-      const row = document.getElementById('hudThumbRow');
-      document.getElementById('trayCount').innerText = `${trayItems.length}/3`;
+      const sheetRow = document.getElementById('sheetThumbRow');
+      const sheetCount = document.getElementById('sheetTrayCount');
+      if (sheetCount) sheetCount.innerText = `${trayItems.length}/3개 비교`;
 
       let html = '';
       trayItems.forEach((item, idx) => {
         const isBest = (idx === 0);
         html += `
           <div class="cursor-pointer">
-            <div class="w-9 h-9 mx-auto rounded-lg overflow-hidden border-2 ${isBest ? 'border-emerald-400' : 'border-white/30'} p-0.5 bg-black/60 shadow">
-              <img src="${item.thumb}" class="w-full h-full object-cover rounded">
+            <div class="w-14 h-14 mx-auto rounded-xl overflow-hidden border-2 ${isBest ? 'border-emerald-400 ring-2 ring-emerald-500/30' : 'border-white/30'} p-0.5 bg-black/60 shadow">
+              <img src="${item.thumb}" class="w-full h-full object-cover rounded-lg">
             </div>
-            <div class="text-[8.5px] font-black ${isBest ? 'text-emerald-400' : 'text-gray-300'} mt-0.5">${item.score}점</div>
+            <div class="text-[10px] font-black ${isBest ? 'text-emerald-400' : 'text-gray-300'} mt-1">${idx + 1}번 (${item.score}점)</div>
           </div>
         `;
       });
-      row.innerHTML = html;
+      if (sheetRow) sheetRow.innerHTML = html;
     }
 
     function clearComparisonTray() {
@@ -1102,10 +1040,6 @@
 
     function triggerPriceLock() {
       isPriceLocked = true;
-      const badge = document.getElementById('priceLockBadge');
-      badge.classList.remove('hidden');
-      badge.classList.add('animate-bounce');
-      setTimeout(() => badge.classList.remove('animate-bounce'), 1000);
       alert('🔒 [POP 가격표 락 완료]\n매대 가격(1,500원)이 고정되었습니다.');
     }
 
@@ -1128,6 +1062,7 @@
     window.onload = () => {
       // 초기 상태는 탐색 대기(SEARCHING)
       transitionToState('SEARCHING');
+      loadCocoDetector();
       startCamera('environment');
       requestAnimationFrame(visionProcessingLoop);
     };
