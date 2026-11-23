@@ -1,0 +1,55 @@
+# ============================================
+# FreshScanner — .gitignore
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# Database
+*.db
+*.db-journal
+
+# Uploads & user data
+uploads/
+
+# ML model weights
+models/*.pt
+models/*.onnx
+models/*.pth
+models/*.bin
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Mobile
+node_modules/
+dist/
+build/
+.expo/
+*.jks
+*.keystore
+
+# Misc
+*.log
+*.tmp
+.coverage
+htmlcov/

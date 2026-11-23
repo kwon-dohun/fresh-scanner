@@ -1,0 +1,18 @@
+# FreshScanner Meat Segmentation Dataset Config (YOLOv8-Seg Format)
+path: ../data/meat_dataset
+train: images/train
+val: images/val
+test: images/test
+
+# Classes:
+# 0: lean (살코기)
+# 1: fat (지방/비계)
+# 2: bone (오돌뼈/갈비뼈)
+# 3: label (가격/등급 라벨)
+names:
+  0: lean
+  1: fat
+  2: bone
+  3: label
+
+nc: 4
