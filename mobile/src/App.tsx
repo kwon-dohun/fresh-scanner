@@ -14,6 +14,9 @@ import axios from "axios";
 
 import { evaluateFrameOnDevice, FrameQualityFeedback } from "./QualityFrameProcessor";
 import { MartLabelEdgeCaseParser, MartMeatLabel } from "./NativeVisionBridge";
+import { ARLiveHUD } from "./components/ARLiveHUD";
+import { AutoSnapshotDwellEngine } from "./services/AutoSnapshotDwellEngine";
+import { PricePreLockEngine } from "./services/PricePreLockEngine";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -32,6 +35,7 @@ export default function App() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [type] = useState(CameraType.back);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [viewMode, setViewMode] = useState<"ar_live" | "detail_lab">("ar_live");
   
   // 온디바이스 실시간 품질 게이트 상태 (네트워크 통신 0회)
   const [qualityFeedback, setQualityFeedback] = useState<FrameQualityFeedback>({
@@ -119,13 +123,37 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 상단 헤더 */}
-      <View style={styles.topBar}>
-        <Text style={styles.appTitle}>🛒 FreshScanner Live</Text>
-        <Text style={styles.trayCounter}>
-          비교 트레이: <Text style={styles.counterNum}>{trayCandidates.length}팩</Text>
-        </Text>
-      </View>
+      {viewMode === "ar_live" ? (
+        <View style={StyleSheet.absoluteFillObject}>
+          <Camera style={styles.camera} type={type} ref={cameraRef}>
+            <ARLiveHUD
+              onSelectCandidate={(cand) => {
+                console.log("선택된 후보:", cand.name);
+              }}
+              onNavigateTab={(tab) => {
+                if (tab === "settings") {
+                  setViewMode("detail_lab");
+                }
+              }}
+            />
+          </Camera>
+          {/* 모드 전환 토글 버튼 */}
+          <TouchableOpacity
+            style={styles.modeTogglePill}
+            onPress={() => setViewMode("detail_lab")}
+          >
+            <Text style={styles.modeToggleText}>🔬 정밀 랩 뷰로 전환</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {/* 상단 헤더 */}
+          <View style={styles.topBar}>
+            <Text style={styles.appTitle}>🛒 FreshScanner Lab</Text>
+            <TouchableOpacity onPress={() => setViewMode("ar_live")}>
+              <Text style={styles.modeToggleTextActive}>📱 AR 라이브 HUD 복귀</Text>
+            </TouchableOpacity>
+          </View>
 
       {/* 카메라 프리뷰 & 온디바이스 실시간 가이드 배너 */}
       <View style={styles.cameraContainer}>
@@ -192,12 +220,37 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </View>
+      </>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#111827" },
+  modeTogglePill: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    zIndex: 99,
+  },
+  modeToggleText: {
+    color: "#4ade80",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  modeToggleTextActive: {
+    color: "#4ade80",
+    fontSize: 12,
+    fontWeight: "bold",
+    textDecorationLine: "underline",
+  },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#111827" },
   topBar: {
     flexDirection: "row",
