@@ -86,6 +86,9 @@
     <button onclick="injectVirtualSample('apple_red')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-emerald-950/80 border border-gray-700 hover:border-emerald-500/50 text-gray-200 transition">
       🍎 꿀사과 (신선도 95%)
     </button>
+    <button onclick="injectVirtualSample('citrus_tangerine')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-orange-950/80 border border-gray-700 hover:border-orange-500/50 text-orange-300 transition">
+      🍊 제주 감귤 2개 (당도 13.2 Brix)
+    </button>
     <button onclick="injectVirtualSample('watermelon')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-purple-950/80 border border-gray-700 hover:border-purple-500/50 text-gray-200 transition">
       🍉 고당도 수박 (완숙)
     </button>
@@ -412,6 +415,26 @@
         recommendSub: "신선도와 가격이 모두 뛰어난 최상급 상품입니다.",
         imgSrc: "/sample_data/real_apple_fresh_01.jpg"
       },
+      citrus_tangerine: {
+        name: "제주 감귤 (2개 포착)",
+        category: "🍊 감귤류 분석",
+        primaryLabel: "당도 13.2 Brix (특상급)",
+        primaryPct: 94,
+        secondaryIcon: "✨",
+        secondaryText: "과피 유포(모공) 촘촘함 · 껍질 얇음",
+        priceMain: "2개 1,600원",
+        priceSub: "(개당 800원 / 100g당 800원)",
+        badgeText: "고당도 감귤",
+        badgeIcon: "🌟",
+        score: 94,
+        crown: "최고예요!",
+        metric1: "고당도 13.2 Brix (선별 A+)",
+        metric2: "산도 0.8% (새콤달콤 황금비율)",
+        metric3: "과피 신선도 96% (수확 직송)",
+        recommendTitle: "이 감귤을 추천해요!",
+        recommendSub: "껍질이 얇고 유포가 촘촘하여 과즙이 꽉 차고 달콤한 특상급 귤입니다.",
+        imgSrc: "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300"
+      },
       watermelon: {
         name: "당도선별 수박 (8kg)",
         category: "🍉 대형 과채",
@@ -697,7 +720,27 @@
       requestAnimationFrame(visionProcessingLoop);
     }
 
-    // 실제 카메라 영상에서 식재료 유무 판별 (얼굴/벽/키보드 배제)
+    // 고속 RGB -> HSV 색공간 변환기
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const d = max - min;
+      let h = 0;
+      const s = max === 0 ? 0 : d / max;
+      const v = max;
+
+      if (max !== min) {
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return [h * 360, s * 100, v * 100];
+    }
+
+    // 실제 카메라 영상에서 식재료 유무 판별 (귤, 사과, 수박, 시금치, 삼겹살 등)
     function processRealCameraFeed() {
       const video = document.getElementById('liveVideo');
       if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
@@ -708,57 +751,125 @@
 
       const d = ctx.getImageData(0, 0, compCanvas.width, compCanvas.height).data;
 
-      // 중앙 60% ROI만 분석
-      const roiX1 = Math.floor(compCanvas.width * 0.2);
-      const roiX2 = Math.floor(compCanvas.width * 0.8);
-      const roiY1 = Math.floor(compCanvas.height * 0.2);
-      const roiY2 = Math.floor(compCanvas.height * 0.8);
+      // 카메라 전체 화면(10%~90%) 탐색
+      const roiX1 = Math.floor(compCanvas.width * 0.1);
+      const roiX2 = Math.floor(compCanvas.width * 0.9);
+      const roiY1 = Math.floor(compCanvas.height * 0.1);
+      const roiY2 = Math.floor(compCanvas.height * 0.9);
 
-      let greenLeafHits = 0;
-      let redFruitMeatHits = 0;
-      let totalPixelsChecked = 0;
+      let citrusHits = 0;       // 🍊 귤 / 감귤류 / 오렌지 (Orange: Hue 14°~44°)
+      let redFruitMeatHits = 0; // 🍎 붉은 사과 / 토마토 / 살코기 (Red: Hue <=14° or >=335°)
+      let greenLeafHits = 0;    // 🥬 시금치 / 채소 (Green: Hue 65°~165°)
+      let yellowFruitHits = 0;  // 🍌 바나나 / 참외 (Yellow: Hue 45°~65°)
+      let whiteFatHits = 0;     // 🥩 삼겹살 비계 (저채도 고명도)
+
       let sumX = 0, sumY = 0;
+      let minX = compCanvas.width, maxX = 0;
 
-      for (let y = roiY1; y < roiY2; y += 4) {
-        for (let x = roiX1; x < roiX2; x += 4) {
-          totalPixelsChecked++;
+      for (let y = roiY1; y < roiY2; y += 3) {
+        for (let x = roiX1; x < roiX2; x += 3) {
           const idx = (y * compCanvas.width + x) * 4;
           const r = d[idx], g = d[idx + 1], b = d[idx + 2];
 
-          // 1. 녹색 채소 판별 (G 채널 우세 및 채도 확보)
-          if (g > 70 && g > r * 1.35 && g > b * 1.35) {
-            greenLeafHits++;
-            sumX += x;
-            sumY += y;
+          const [h, s, v] = rgbToHsv(r, g, b);
+
+          // 1. 🍊 귤 / 감귤류 / 오렌지 판별 (주황색 계열, 저조도/웹캠 실내 화이트밸런스 수용)
+          // 붉은 밀감(Hue 8°)부터 노란 조생귤(Hue 58°)까지 전 영역 포착
+          // 카로티노이드 특성상 청색(B) 흡수가 높아 r > b + 18, 채도 s >= 16%로 피부톤 배제
+          if (h >= 8 && h <= 58 && s >= 16 && v >= 18 && (r > b + 18) && (r > g * 0.88)) {
+            citrusHits++;
+            sumX += x; sumY += y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
           }
-          // 2. 붉은색 과일/살코기 판별 (사람 피부톤 배제: 피부톤은 R이 높지만 G와 차이가 적고 B도 일정함)
-          // 순수 살코기/붉은 과일은 R 채널이 G 채널의 1.6배 이상
-          else if (r > 90 && r > g * 1.6 && r > b * 1.6) {
+          // 2. 🍎 붉은 사과 / 토마토 / 살코기 판별
+          else if ((h <= 10 || h >= 335) && s >= 28 && v >= 22) {
             redFruitMeatHits++;
-            sumX += x;
-            sumY += y;
+            sumX += x; sumY += y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+          }
+          // 3. 🥬 시금치 / 잎채소 판별
+          else if (h >= 65 && h <= 165 && s >= 20 && v >= 20) {
+            greenLeafHits++;
+            sumX += x; sumY += y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+          }
+          // 4. 🥩 삼겹살 비계 패턴 보조 판별
+          else if (s < 18 && v > 65) {
+            whiteFatHits++;
           }
         }
       }
 
-      const totalHits = greenLeafHits + redFruitMeatHits;
-      const hitRatio = totalHits / Math.max(totalPixelsChecked, 1);
+      const totalHits = citrusHits + redFruitMeatHits + greenLeafHits;
 
-      // 전체 중앙 영역의 4% 이상 뚜렷한 식재료 색상이 포착된 경우에만 활성화
-      if (hitRatio > 0.04) {
-        const cx = (sumX / totalHits) * (390 / compCanvas.width);
-        const cy = (sumY / totalHits) * (780 / compCanvas.height);
-        targetPos = { x: cx, y: cy, r: 75 };
+      // 6개 이상의 샘플 픽셀이 감귤 또는 식재료 색조와 일치하면 즉시 LOCKED 전환
+      if (citrusHits >= 6 || totalHits >= 8) {
+        const primaryHits = (citrusHits >= redFruitMeatHits && citrusHits >= greenLeafHits) ? citrusHits : totalHits;
+        const cx = (sumX / primaryHits) * (390 / compCanvas.width);
+        const cy = (sumY / primaryHits) * (780 / compCanvas.height);
+        const spanX = (maxX - minX) * (390 / compCanvas.width);
 
-        if (greenLeafHits > redFruitMeatHits) {
+        // 귤이 2개 나란히 놓여 폭이 넓으면 반경을 유연하게 확장
+        const radius = Math.max(Math.min(spanX * 0.65, 115), 65);
+        targetPos = { x: cx, y: cy, r: radius };
+
+        // 🍊 귤 / 감귤 감지 시 (감귤 색조가 가장 우세할 때)
+        if (citrusHits >= redFruitMeatHits && citrusHits >= greenLeafHits) {
+          const profile = { ...FOOD_PROFILES.citrus_tangerine };
+          if (spanX > 50 || citrusHits >= 25) {
+            profile.name = "제주 감귤 (2개 포착)";
+            profile.priceMain = "2개 1,600원";
+            profile.priceSub = "(개당 800원 / 100g 800원)";
+            profile.score = 94;
+            profile.crown = "1번 귤 최고!";
+            profile.recommendTitle = "좌측 1번 감귤을 추천해요!";
+            profile.recommendSub = "2개 중 좌측 감귤(94점)이 과피가 더 얇고 완숙 당도가 높습니다.";
+            // 2개 비교 트레이 갱신
+            if (trayItems.length === 0) {
+              trayItems = [
+                { id: 'citrus_1', score: 94, thumb: 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300' },
+                { id: 'citrus_2', score: 82, thumb: 'https://images.unsplash.com/photo-1557800636-894a64c1696f?w=300' }
+              ];
+              renderTray();
+            }
+          } else {
+            profile.name = "제주 감귤 (1개 포착)";
+            profile.priceMain = "1개 800원";
+            profile.priceSub = "(100g당 800원)";
+            profile.score = 92;
+            profile.crown = "최고예요!";
+            profile.recommendTitle = "이 감귤을 추천해요!";
+            profile.recommendSub = "껍질이 얇고 유포가 촘촘하여 당도(13.2 Brix)가 뛰어납니다.";
+          }
+          transitionToState('LOCKED', profile);
+        }
+        // 🥬 채소 감지 시
+        else if (greenLeafHits >= redFruitMeatHits) {
           transitionToState('LOCKED', FOOD_PROFILES.spinach);
-        } else {
-          transitionToState('LOCKED', FOOD_PROFILES.apple_red);
+        }
+        // 🥩 삼겹살 vs 🍎 사과 감지 시
+        else {
+          if (whiteFatHits > 15) {
+            transitionToState('LOCKED', FOOD_PROFILES.pork_belly);
+          } else {
+            transitionToState('LOCKED', FOOD_PROFILES.apple_red);
+          }
         }
       } else {
-        // 식재료가 없음 (얼굴, 빈 방 등) -> 탐색 모드로 전환하고 점수 배지 숨김!
+        // 식재료가 시야에 없음 (얼굴, 빈 방 등)
         targetPos = { x: 195, y: 390, r: 70 };
         transitionToState('SEARCHING');
+
+        // 실시간 탐색 피드백 (귤 색상이 살짝이라도 잡히면 힌트 제공)
+        if (citrusHits > 0) {
+          const sys = document.getElementById('systemStatus');
+          sys.innerText = `● 감귤 색조 포착 중 (${citrusHits}/6px)`;
+          sys.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/40 rounded-full animate-pulse';
+          document.getElementById('bannerSub').innerText = `감귤 색상이 감지되었습니다 (${citrusHits}px). 조금 더 가까이 비춰주세요!`;
+        }
       }
     }
 
