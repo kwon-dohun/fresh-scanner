@@ -172,35 +172,25 @@
           </div>
         </div>
 
-        <!-- ── 6. 중앙 실시간 AR 타겟팅 링 & 배지 (물체 감지 시에만 활성화) ── -->
-        <div id="arTrackerGroup" class="absolute pointer-events-none z-30 transition-all duration-150 ease-out flex flex-col items-center justify-center" style="top: 260px; left: 115px; width: 160px; height: 160px;">
-          
-          <!-- 상단 플로팅 배지 (음식 객체 확정 시에만 표시) -->
-          <div id="targetBadgeContainer" class="hidden mb-2 flex flex-col items-center badge-shadow transition-all duration-300">
-            <div id="targetScore" class="bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1">
-              <span id="targetScoreNum">89점</span>
+        <!-- ── 6. 다중 객체 실시간 AR 타겟팅 레이어 (각 식재료마다 독립 링+배지 동시 표시) ── -->
+        <div id="multiTrackerContainer" class="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+          <!-- 기본 대기 상태 (식재료 없을 때) -->
+          <div id="searchingStateGroup" class="absolute flex flex-col items-center justify-center transition-all duration-300" style="top: 260px; left: 115px; width: 160px; height: 160px;">
+            <div class="relative w-[140px] h-[140px] rounded-full border-2 border-dashed border-gray-400/60 flex items-center justify-center">
+              <div class="absolute w-[80%] h-0.5 bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-scan"></div>
+              <div class="reticle-corner top-[-4px] left-[-4px] border-t-4 border-l-4 rounded-tl-lg border-gray-400"></div>
+              <div class="reticle-corner top-[-4px] right-[-4px] border-t-4 border-r-4 rounded-tr-lg border-gray-400"></div>
+              <div class="reticle-corner bottom-[-4px] left-[-4px] border-b-4 border-l-4 rounded-bl-lg border-gray-400"></div>
+              <div class="reticle-corner bottom-[-4px] right-[-4px] border-b-4 border-r-4 rounded-br-lg border-gray-400"></div>
+              <div class="w-2 h-2 rounded-full bg-gray-400"></div>
             </div>
-            <div id="targetBadge" class="mt-1 px-2.5 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black flex items-center space-x-1 shadow">
-              <span>👑</span> <span id="targetBadgeText">최고예요!</span>
+            <div class="mt-2 text-[10px] font-bold text-gray-300 bg-black/60 px-2.5 py-0.5 rounded-full border border-white/20 whitespace-nowrap">
+              🍊 사과·감귤 탐색 중... (얼굴·배경은 자동 무시)
             </div>
           </div>
 
-          <!-- 타겟팅 링 본체 (탐색 중: 회색 점선 / 감지 완료: 초록색 펄스 링) -->
-          <div id="targetReticleRing" class="relative w-[140px] h-[140px] rounded-full border-2 border-dashed border-gray-400/60 flex items-center justify-center transition-all duration-300">
-            <!-- 스캔 레이더 라인 (탐색 중일 때만 표시) -->
-            <div id="scanLine" class="absolute w-[80%] h-0.5 bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-scan"></div>
-
-            <div class="reticle-corner top-[-4px] left-[-4px] border-t-4 border-l-4 rounded-tl-lg border-gray-400"></div>
-            <div class="reticle-corner top-[-4px] right-[-4px] border-t-4 border-r-4 rounded-tr-lg border-gray-400"></div>
-            <div class="reticle-corner bottom-[-4px] left-[-4px] border-b-4 border-l-4 rounded-bl-lg border-gray-400"></div>
-            <div class="reticle-corner bottom-[-4px] right-[-4px] border-b-4 border-r-4 rounded-br-lg border-gray-400"></div>
-            <div id="reticleDot" class="w-2 h-2 rounded-full bg-gray-400"></div>
-          </div>
-
-          <!-- 타겟팅 링 하단 탐색 안내 텍스트 -->
-          <div id="searchingPrompt" class="mt-2 text-[10px] font-bold text-gray-300 bg-black/60 px-2.5 py-0.5 rounded-full border border-white/20 whitespace-nowrap">
-            🍊 사과·감귤 탐색 중... (얼굴·배경은 자동 무시)
-          </div>
+          <!-- 감지된 모든 식재료 위에 동시 표시되는 동적 AR 링들 -->
+          <div id="activeReticlesLayer" class="absolute inset-0 pointer-events-none"></div>
         </div>
 
         <!-- ── 7. 화면 하단 1줄 미니멀 추천 바 (탭 시 상세 바텀시트 오픈) ── -->
@@ -560,14 +550,35 @@
       img.style.top = '270px';
       img.style.left = '95px';
 
-      // 강제 LOCKED 상태 전환
-      transitionToState('LOCKED', activeVirtualSample);
+      activeTrackers.clear();
+      const brixVal = (activeVirtualSample.metric2 && activeVirtualSample.metric2.includes('Brix'))
+        ? activeVirtualSample.metric2.split(' ')[2]
+        : '13.2';
+
+      activeTrackers.set('virtual_sample', {
+        id: 'virtual_sample',
+        smoothX: 195,
+        smoothY: 370,
+        smoothR: 75,
+        score: activeVirtualSample.score,
+        brix: brixVal,
+        colorScore: 36,
+        textureScore: 28,
+        defectPen: 0,
+        avgH: 24,
+        avgS: 35,
+        koreanName: activeVirtualSample.name,
+        lastSeen: performance.now() + 10000000,
+        matched: true
+      });
+      renderActiveTrackers();
     }
 
     function clearVirtualSample() {
       activeVirtualSample = null;
       document.getElementById('virtualProduceImg').classList.add('hidden');
-      transitionToState('SEARCHING');
+      activeTrackers.clear();
+      renderActiveTrackers();
     }
 
     // ── 3. 바텀 시트 (상세 분석 리포트) 제어 ──
@@ -598,103 +609,158 @@
       }
     }
 
-    // ── 4. 상태 머신 전환 (SEARCHING ↔ LOCKED) ──
-    function transitionToState(newState, profileData = null) {
-      arState = newState;
+    // ── 4. 다중 객체 실시간 추적기 (MOT) 및 상태 관리 ──
+    let activeTrackers = new Map(); // id -> tracker
+    let nextTrackerId = 1;
 
-      const badgeGroup = document.getElementById('targetBadgeContainer');
-      const reticleRing = document.getElementById('targetReticleRing');
-      const scanLine = document.getElementById('scanLine');
-      const corners = reticleRing.querySelectorAll('.reticle-corner');
-      const reticleDot = document.getElementById('reticleDot');
-      const searchingPrompt = document.getElementById('searchingPrompt');
+    // 다중 객체 실시간 AR 링 및 점수 배지 동시 렌더링
+    function renderActiveTrackers() {
+      const searchingGroup = document.getElementById('searchingStateGroup');
+      const reticlesLayer = document.getElementById('activeReticlesLayer');
       const systemStatus = document.getElementById('systemStatusPill');
+      const bIcon = document.getElementById('bottomBarIcon');
+      const bTitle = document.getElementById('bottomBarTitle');
+      const bSub = document.getElementById('bottomBarSub');
 
-      if (newState === 'SEARCHING') {
-        // [탐색 모드] 점수 배지 완전 숨김
-        badgeGroup.classList.add('hidden');
-        searchingPrompt.classList.remove('hidden');
-        scanLine.classList.remove('hidden');
+      const trackerList = Array.from(activeTrackers.values()).sort((a, b) => a.smoothX - b.smoothX);
 
-        // 링 스타일: 회색 점선
-        reticleRing.className = 'relative w-[140px] h-[140px] rounded-full border-2 border-dashed border-gray-400/60 flex items-center justify-center transition-all duration-300';
-        corners.forEach(c => c.style.borderColor = '#9ca3af');
-        reticleDot.style.backgroundColor = '#9ca3af';
-
-        systemStatus.innerText = '● 식재료 탐색 중...';
-        systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700 rounded-full';
-
-        document.getElementById('engineStateIcon').innerText = '🔍';
-        document.getElementById('engineStateTitle').innerText = '사과·감귤을 화면 중앙에 비춰주세요';
-        document.getElementById('engineStateDesc').innerHTML = 'COCO 경량 AI(Apache 2.0)가 사람 얼굴이나 손은 무시하고, <span class="text-emerald-300 font-bold">진짜 과일·식재료</span>만 감지합니다.';
-
-        // 하단 1줄 미니멀 바
-        const bIcon = document.getElementById('bottomBarIcon');
-        const bTitle = document.getElementById('bottomBarTitle');
-        const bSub = document.getElementById('bottomBarSub');
+      if (trackerList.length === 0) {
+        // [식재료 없음: 탐색 대기]
+        if (searchingGroup) searchingGroup.classList.remove('hidden');
+        if (reticlesLayer) reticlesLayer.innerHTML = '';
+        if (systemStatus) {
+          systemStatus.innerText = '● 식재료 탐색 중...';
+          systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700 rounded-full';
+        }
         if (bIcon) bIcon.innerText = '🔍';
         if (bTitle) bTitle.innerText = '식재료를 비춰주세요';
-        if (bSub) bSub.innerText = '사람 얼굴이나 배경은 자동으로 무시됩니다';
+        if (bSub) bSub.innerText = '사과·감귤을 감지하면 AI가 가성비를 분석합니다';
+        return;
+      }
 
-      } else if (newState === 'LOCKED' && profileData) {
-        // [포착 완료 모드] 점수 및 플로팅 배지 활성화!
-        badgeGroup.classList.remove('hidden');
-        searchingPrompt.classList.add('hidden');
-        scanLine.classList.add('hidden');
-
-        // 링 스타일: 녹색 실선 + 펄스
-        reticleRing.className = 'relative w-[140px] h-[140px] rounded-full border-2 border-emerald-400/90 border-dashed animate-pulse-ring flex items-center justify-center transition-all duration-300';
-        corners.forEach(c => c.style.borderColor = '#4ade80');
-        reticleDot.style.backgroundColor = '#4ade80';
-
-        systemStatus.innerText = '● 식재료 분석 완료';
+      // [식재료 1개 이상 감지됨!]
+      if (searchingGroup) searchingGroup.classList.add('hidden');
+      if (systemStatus) {
+        systemStatus.innerText = `● ${trackerList.length}개 식재료 동시 분석 중`;
         systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full animate-pulse';
+      }
 
-        document.getElementById('engineStateIcon').innerText = '🎯';
-        document.getElementById('engineStateTitle').innerText = `${profileData.name} 감지 완료 (${profileData.score}점)`;
-        document.getElementById('engineStateDesc').innerHTML = `<span class="text-emerald-300 font-bold">${profileData.category}</span> 정밀 분석 중. 하단 바를 탭하여 상세 계측값을 확인하세요.`;
+      // 최고 점수 1위 선별
+      let bestItem = trackerList[0];
+      for (const t of trackerList) {
+        if (t.score > bestItem.score) bestItem = t;
+      }
 
-        // 점수 배지 업데이트
-        document.getElementById('targetScoreNum').innerText = `${profileData.score}점`;
-        document.getElementById('targetBadgeText').innerText = profileData.crown;
+      // 화면에 각 식재료마다 독립적인 AR 링과 배지 동시 렌더링
+      let reticlesHtml = '';
+      trackerList.forEach((t, idx) => {
+        const isBest = (t === bestItem);
+        const itemNumber = idx + 1;
+        const ringDiameter = Math.round(t.smoothR * 2);
 
-        const scoreContainer = document.getElementById('targetScore');
-        if (profileData.score >= 90) {
-          scoreContainer.className = 'bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
-        } else if (profileData.score >= 75) {
-          scoreContainer.className = 'bg-amber-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
+        if (isBest) {
+          // 1위 추천 상품: 눈에 띄는 에메랄드 링 + 왕관 배지
+          reticlesHtml += `
+            <div class="absolute transition-all duration-75" style="left: ${Math.round(t.smoothX)}px; top: ${Math.round(t.smoothY)}px; transform: translate(-50%, -50%); pointer-events: none;">
+              <!-- 상단 플로팅 배지 -->
+              <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 flex flex-col items-center">
+                <div class="bg-emerald-500 text-white px-3 py-0.5 rounded-full text-xs font-black border-2 border-white shadow-xl flex items-center space-x-1 whitespace-nowrap">
+                  <span>${t.score}점</span>
+                  <span class="text-[10px]">👑 1위 추천</span>
+                </div>
+                <div class="mt-1 text-[9.5px] font-black text-emerald-300 bg-black/80 px-2.5 py-0.5 rounded-full border border-emerald-400/60 shadow whitespace-nowrap">
+                  ${itemNumber}번 ${t.koreanName} · 당도 ${t.brix} Brix
+                </div>
+              </div>
+
+              <!-- 녹색 펄스 AR 타겟 링 -->
+              <div class="relative rounded-full border-2 border-emerald-400 border-dashed animate-pulse-ring flex items-center justify-center" style="width: ${ringDiameter}px; height: ${ringDiameter}px;">
+                <div class="reticle-corner top-[-3px] left-[-3px] border-t-3 border-l-3 rounded-tl-lg border-emerald-400"></div>
+                <div class="reticle-corner top-[-3px] right-[-3px] border-t-3 border-r-3 rounded-tr-lg border-emerald-400"></div>
+                <div class="reticle-corner bottom-[-3px] left-[-3px] border-b-3 border-l-3 rounded-bl-lg border-emerald-400"></div>
+                <div class="reticle-corner bottom-[-3px] right-[-3px] border-b-3 border-r-3 rounded-br-lg border-emerald-400"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
+              </div>
+            </div>
+          `;
         } else {
-          scoreContainer.className = 'bg-red-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-xl flex items-center space-x-1';
+          // 비교군 상품: 절제된 청록/회색 점선 링 + 점수 배지
+          reticlesHtml += `
+            <div class="absolute transition-all duration-75" style="left: ${Math.round(t.smoothX)}px; top: ${Math.round(t.smoothY)}px; transform: translate(-50%, -50%); pointer-events: none;">
+              <!-- 상단 플로팅 배지 -->
+              <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 flex flex-col items-center">
+                <div class="bg-gray-800/95 text-gray-200 px-2.5 py-0.5 rounded-full text-xs font-bold border border-gray-600 shadow-lg flex items-center space-x-1 whitespace-nowrap">
+                  <span>${t.score}점</span>
+                </div>
+                <div class="mt-1 text-[9.5px] font-bold text-gray-300 bg-black/80 px-2 py-0.5 rounded-full border border-white/20 shadow whitespace-nowrap">
+                  ${itemNumber}번 ${t.koreanName} · 당도 ${t.brix} Brix
+                </div>
+              </div>
+
+              <!-- 비교용 AR 타겟 링 -->
+              <div class="relative rounded-full border-2 border-cyan-400/50 border-dashed flex items-center justify-center" style="width: ${ringDiameter}px; height: ${ringDiameter}px;">
+                <div class="reticle-corner top-[-3px] left-[-3px] border-t-2 border-l-2 rounded-tl border-cyan-400/60"></div>
+                <div class="reticle-corner top-[-3px] right-[-3px] border-t-2 border-r-2 rounded-tr border-cyan-400/60"></div>
+                <div class="reticle-corner bottom-[-3px] left-[-3px] border-b-2 border-l-2 rounded-bl border-cyan-400/60"></div>
+                <div class="reticle-corner bottom-[-3px] right-[-3px] border-b-2 border-r-2 rounded-br border-cyan-400/60"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-cyan-400/80"></div>
+              </div>
+            </div>
+          `;
         }
+      });
 
-        // 하단 1줄 미니멀 바 업데이트
-        const bIcon = document.getElementById('bottomBarIcon');
-        const bTitle = document.getElementById('bottomBarTitle');
-        const bSub = document.getElementById('bottomBarSub');
-        if (bIcon) bIcon.innerText = profileData.category.includes('감귤') ? '🍊' : (profileData.category.includes('사과') ? '🍎' : '🥗');
-        if (bTitle) bTitle.innerText = profileData.recommendTitle || profileData.name;
-        if (bSub) bSub.innerText = `${profileData.score}점 · ${profileData.primaryLabel} · 탭하여 상세 보기`;
+      if (reticlesLayer) reticlesLayer.innerHTML = reticlesHtml;
 
-        // 바텀 시트 데이터 주입
-        const sCat = document.getElementById('sheetCategoryBadge');
-        const sTitle = document.getElementById('sheetTitle');
-        const sFresh = document.getElementById('sheetFreshnessText');
-        const sBar = document.getElementById('sheetFreshnessBar');
-        const sPMain = document.getElementById('sheetPriceMain');
-        const sPSub = document.getElementById('sheetPriceSub');
-        const sTot = document.getElementById('sheetTotalScore');
-        const sVal = document.getElementById('sheetValueBadge');
-
-        if (sCat) sCat.innerText = profileData.category;
-        if (sTitle) sTitle.innerText = profileData.name;
-        if (sFresh) sFresh.innerText = `${profileData.primaryPct}% (${profileData.crown})`;
-        if (sBar) sBar.style.width = `${profileData.primaryPct}%`;
-        if (sPMain) sPMain.innerText = profileData.priceMain;
-        if (sPSub) sPSub.innerText = profileData.priceSub;
-        if (sTot) sTot.innerText = `${profileData.score}점`;
-        if (sVal && profileData.badgeText) {
-          sVal.innerText = `${profileData.badgeIcon || '👍'} ${profileData.badgeText}`;
+      // 하단 1줄 미니멀 추천 바
+      const bestIndex = trackerList.indexOf(bestItem) + 1;
+      const isMulti = (trackerList.length >= 2);
+      if (bIcon) bIcon.innerText = (bestItem.koreanName.includes('귤')) ? '🍊' : '🍎';
+      if (bTitle) {
+        bTitle.innerText = isMulti
+          ? `${bestIndex}번 ${bestItem.koreanName} 1위 추천! (${bestItem.score}점)`
+          : `이 ${bestItem.koreanName} 추천! (${bestItem.score}점)`;
+      }
+      if (bSub) {
+        if (isMulti) {
+          const othersScores = trackerList.filter(x => x !== bestItem).map((x, i) => `${x.score}점`).join(', ');
+          bSub.innerText = `당도 ${bestItem.brix} Brix vs 다른 상품(${othersScores}) · 탭하여 비교`;
+        } else {
+          bSub.innerText = `당도 ${bestItem.brix} Brix · 신선도 우수 · 탭하여 상세 보기`;
         }
+      }
+
+      // 바텀 시트 데이터 주입 (1위 상품 기준)
+      const sCat = document.getElementById('sheetCategoryBadge');
+      const sTitle = document.getElementById('sheetTitle');
+      const sFresh = document.getElementById('sheetFreshnessText');
+      const sBar = document.getElementById('sheetFreshnessBar');
+      const sTot = document.getElementById('sheetTotalScore');
+      const sBrix = document.getElementById('sheetBrix');
+      const sColor = document.getElementById('sheetColorScore');
+      const sText = document.getElementById('sheetTextureScore');
+      const sDef = document.getElementById('sheetDefectPenalty');
+
+      if (sCat) sCat.innerText = bestItem.koreanName.includes('귤') ? '🍊 감귤류 분석' : '🍎 과일 분석';
+      if (sTitle) sTitle.innerText = `${bestItem.koreanName} (${bestIndex}번 상품 1위)`;
+      if (sFresh) sFresh.innerText = `${bestItem.score}% (특상급)`;
+      if (sBar) sBar.style.width = `${bestItem.score}%`;
+      if (sTot) sTot.innerText = `${bestItem.score}점`;
+      if (sBrix) sBrix.innerText = `${bestItem.brix} Brix`;
+      if (sColor) sColor.innerText = `+${bestItem.colorScore}점 (H:${Math.round(bestItem.avgH)}° S:${Math.round(bestItem.avgS)}%)`;
+      if (sText) sText.innerText = `+${bestItem.textureScore}점 (질감:${Math.round(bestItem.avgGrad || 20)})`;
+      if (sDef) sDef.innerText = bestItem.defectPen > 0 ? `-${bestItem.defectPen}점` : '0점 (깨끗함)';
+
+      // 비교 트레이 업데이트 (2개 이상인 경우 자동 비교 채우기)
+      if (isMulti) {
+        trayItems = trackerList.map((t, idx) => ({
+          id: t.id,
+          score: t.score,
+          thumb: t.koreanName.includes('귤')
+            ? 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300'
+            : '/sample_data/real_apple_fresh_01.jpg'
+        }));
+        renderTray();
       }
     }
 
@@ -712,25 +778,14 @@
       }
 
       if (activeVirtualSample) {
-        targetPos = { x: 195, y: 365, r: 75 };
+        // 가상 샘플 모드 유지
       } else if (activeSource === 'camera') {
         processRealCameraFeed();
       } else {
         renderSimulationCanvas();
       }
 
-      // 지수이동평균(EMA) 스무딩
-      smoothPos.x += (targetPos.x - smoothPos.x) * EMA_ALPHA;
-      smoothPos.y += (targetPos.y - smoothPos.y) * EMA_ALPHA;
-      smoothPos.r += (targetPos.r - smoothPos.r) * EMA_ALPHA;
-
-      const tracker = document.getElementById('arTrackerGroup');
-      const diameter = smoothPos.r * 2;
-      tracker.style.width = `${diameter}px`;
-      tracker.style.height = `${diameter}px`;
-      tracker.style.left = `${smoothPos.x - smoothPos.r}px`;
-      tracker.style.top = `${smoothPos.y - smoothPos.r}px`;
-
+      renderActiveTrackers();
       checkDwellAndSnapshot();
       requestAnimationFrame(visionProcessingLoop);
     }
@@ -813,7 +868,7 @@
       return [h * 360, s * 100, v * 100];
     }
 
-    // ── 7. 실제 카메라 비전 분석 루프 (COCO OD + Inner Crop 손가락 배제) ──
+    // ── 7. 실제 카메라 비전 분석 루프 (Multi-Item MOT + Color Guardrail) ──
     async function processRealCameraFeed() {
       const video = document.getElementById('liveVideo');
       if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
@@ -824,127 +879,178 @@
 
       const now = performance.now();
 
-      // [2단계] COCO-SSD 객체 탐지 실행 (100ms마다 비동기 호출)
+      // [2단계] COCO-SSD 객체 탐지 실행 (100ms 간격 비동기)
       if (cocoModel && !isDetecting && (now - lastDetectTime >= 100)) {
         isDetecting = true;
         lastDetectTime = now;
         cocoModel.detect(video).then(predictions => {
-          // 음식 식재료 클래스만 필터링 (orange, apple, banana, broccoli, carrot)
-          // person(사람 얼굴, 신체)은 완전 배제!
+          // 음식 식재료 클래스만 선별 (person, hand 등 얼굴/신체는 원천 배제)
           const ALLOWED_FOOD = ['orange', 'apple', 'banana', 'broccoli', 'carrot'];
-          detectedFoodItems = predictions.filter(p => ALLOWED_FOOD.includes(p.class) && p.score >= 0.38);
+          detectedFoodItems = predictions.filter(p => ALLOWED_FOOD.includes(p.class) && p.score >= 0.32);
           isDetecting = false;
         }).catch(() => {
           isDetecting = false;
         });
       }
 
-      // [핵심] 식재료가 없거나 사람 얼굴/배경만 있는 경우 -> 무조건 점수 숨김!
+      // 식재료가 없거나 사람 얼굴만 비추는 경우 -> 트래커 수명 확인 후 정리
       if (detectedFoodItems.length === 0) {
-        targetPos = { x: 195, y: 390, r: 70 };
-        transitionToState('SEARCHING');
+        for (const [id, t] of activeTrackers.entries()) {
+          if (now - t.lastSeen > 350) {
+            activeTrackers.delete(id);
+          }
+        }
         return;
       }
 
-      // ── 음식 물체 감지됨! Bounding Box 매핑 ──
+      // 화면 좌표계 스케일 (비디오 해상도 -> 390x780 뷰포트)
       const scaleX = 390 / video.videoWidth;
       const scaleY = 780 / video.videoHeight;
 
-      const bestDet = detectedFoodItems[0];
-      const [bx, by, bw, bh] = bestDet.bbox;
-      const cx = (bx + bw / 2) * scaleX;
-      const cy = (by + bh / 2) * scaleY;
-      const radius = Math.max(Math.min(Math.max(bw * scaleX, bh * scaleY) * 0.55, 125), 55);
+      // 최대 4개까지 다중 식재료 동시 분석
+      const itemsToProcess = detectedFoodItems.slice(0, 4);
 
-      targetPos = { x: cx, y: cy, r: radius };
+      for (const det of itemsToProcess) {
+        const [bx, by, bw, bh] = det.bbox;
+        const cx = (bx + bw / 2) * scaleX;
+        const cy = (by + bh / 2) * scaleY;
+        const radius = Math.max(Math.min(Math.max(bw * scaleX, bh * scaleY) * 0.52, 120), 45);
 
-      // [3단계] 손가락 배제 Inner Crop (바운딩 박스 중앙 65% 영역만 분석하여 손가락 회피)
-      const innerX = Math.floor(bx + bw * 0.175);
-      const innerY = Math.floor(by + bh * 0.175);
-      const innerW = Math.max(Math.floor(bw * 0.65), 10);
-      const innerH = Math.max(Math.floor(bh * 0.65), 10);
+        // [3단계] 손가락 배제 Inner Crop (바운딩 박스 중앙 65% 영역 픽셀만 샘플링)
+        const innerX = Math.floor(bx + bw * 0.175);
+        const innerY = Math.floor(by + bh * 0.175);
+        const innerW = Math.max(Math.floor(bw * 0.65), 10);
+        const innerH = Math.max(Math.floor(bh * 0.65), 10);
 
-      const innerCanvas = document.createElement('canvas');
-      innerCanvas.width = 48; innerCanvas.height = 48;
-      const innerCtx = innerCanvas.getContext('2d');
-      innerCtx.drawImage(video, innerX, innerY, innerW, innerH, 0, 0, 48, 48);
-      const idata = innerCtx.getImageData(0, 0, 48, 48).data;
+        const innerCanvas = document.createElement('canvas');
+        innerCanvas.width = 40; innerCanvas.height = 40;
+        const innerCtx = innerCanvas.getContext('2d');
+        innerCtx.drawImage(video, innerX, innerY, innerW, innerH, 0, 0, 40, 40);
+        const idata = innerCtx.getImageData(0, 0, 40, 40).data;
 
-      let sumH = 0, sumS = 0, sumV = 0, validPix = 0, sumGrad = 0, defectPix = 0;
-      for (let y = 0; y < 48; y += 2) {
-        for (let x = 0; x < 48; x += 2) {
-          const idx = (y * 48 + x) * 4;
-          const r = idata[idx], g = idata[idx + 1], b = idata[idx + 2];
-          const [h, s, v] = rgbToHsv(r, g, b);
+        let sumR = 0, sumG = 0, sumB = 0, sumH = 0, sumS = 0, sumV = 0;
+        let validPix = 0, sumGrad = 0, defectPix = 0;
 
-          validPix++;
-          sumH += h; sumS += s; sumV += v;
+        for (let y = 0; y < 40; y += 2) {
+          for (let x = 0; x < 40; x += 2) {
+            const idx = (y * 40 + x) * 4;
+            const r = idata[idx], g = idata[idx + 1], b = idata[idx + 2];
+            const [h, s, v] = rgbToHsv(r, g, b);
 
-          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-          const nidx = (y * 48 + Math.min(x + 2, 47)) * 4;
-          const nluma = 0.299 * idata[nidx] + 0.587 * idata[nidx + 1] + 0.114 * idata[nidx + 2];
-          sumGrad += Math.abs(luma - nluma);
+            validPix++;
+            sumR += r; sumG += g; sumB += b;
+            sumH += h; sumS += s; sumV += v;
 
-          if (v < 22 || (s < 12 && v < 40)) {
-            defectPix++;
+            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+            const nidx = (y * 40 + Math.min(x + 2, 39)) * 4;
+            const nluma = 0.299 * idata[nidx] + 0.587 * idata[nidx + 1] + 0.114 * idata[nidx + 2];
+            sumGrad += Math.abs(luma - nluma);
+
+            if (v < 22 || (s < 12 && v < 40)) {
+              defectPix++;
+            }
           }
+        }
+
+        const avgR = sumR / Math.max(validPix, 1);
+        const avgG = sumG / Math.max(validPix, 1);
+        const avgB = sumB / Math.max(validPix, 1);
+        const avgH = sumH / Math.max(validPix, 1);
+        const avgS = sumS / Math.max(validPix, 1);
+        const avgGrad = sumGrad / Math.max(validPix, 1);
+
+        // [색상 기반 카테고리 가드레일 (Color Guardrail)]
+        // COCO 기본 모델은 미국식 네이블 오렌지 기준이라 제주 조생귤(납작하고 붉은빛)을 사과(apple)와 번갈아 오인식함.
+        // 카로티노이드 분광 특성: Hue 11~52°, R > B + 20 이면 COCO가 apple을 뱉어도 100% '제주 감귤'로 강제 고정!
+        let isMandarin = false;
+        let koreanCategory = '감귤';
+
+        if ((avgH >= 11 && avgH <= 52) && (avgR > avgB + 20)) {
+          isMandarin = true;
+          koreanCategory = '감귤';
+        } else if ((avgH <= 11 || avgH >= 335) && (avgR > avgG + 15)) {
+          isMandarin = false;
+          koreanCategory = '사과';
+        } else {
+          isMandarin = (det.class === 'orange');
+          koreanCategory = isMandarin ? '감귤' : '사과';
+        }
+
+        // 품질 점수 및 당도 산정
+        let colorScore, textureScore, defectPen, totalScore, brix;
+        if (isMandarin) {
+          colorScore = Math.max(14, Math.min(38, Math.round(38 - Math.abs(avgH - 24) * 0.65 + (avgS - 30) * 0.35)));
+          textureScore = Math.max(15, Math.min(34, Math.round(18 + Math.min(avgGrad, 30) * 0.52)));
+          defectPen = Math.min(18, Math.floor(defectPix * 0.8));
+          totalScore = Math.max(55, Math.min(97, colorScore + textureScore + 25 - defectPen));
+          brix = (9.5 + (colorScore / 38.0) * 4.2 - (defectPen * 0.05)).toFixed(1);
+        } else {
+          colorScore = Math.max(14, Math.min(38, Math.round(38 - Math.min(Math.abs(avgH - 0), Math.abs(avgH - 360)) * 0.6 + (avgS - 35) * 0.3)));
+          textureScore = Math.max(15, Math.min(34, Math.round(20 + Math.min(avgGrad, 25) * 0.5)));
+          defectPen = Math.min(18, Math.floor(defectPix * 0.8));
+          totalScore = Math.max(55, Math.min(97, colorScore + textureScore + 26 - defectPen));
+          brix = (11.0 + (colorScore / 38.0) * 3.5 - (defectPen * 0.05)).toFixed(1);
+        }
+
+        // [다중 객체 공간 매칭 (Spatial Distance MOT)]
+        // 기존 트래커와 유클리디안 거리(<110px) 매칭하여 ID 고정 및 EMA 스무딩 (떨림/왔다갔다 방지)
+        let matchedTracker = null;
+        let minDist = 110;
+        for (const [id, t] of activeTrackers.entries()) {
+          if (t.matched) continue;
+          const dist = Math.hypot(cx - t.smoothX, cy - t.smoothY);
+          if (dist < minDist) {
+            minDist = dist;
+            matchedTracker = t;
+          }
+        }
+
+        if (matchedTracker) {
+          matchedTracker.matched = true;
+          matchedTracker.lastSeen = now;
+          matchedTracker.smoothX += (cx - matchedTracker.smoothX) * 0.45;
+          matchedTracker.smoothY += (cy - matchedTracker.smoothY) * 0.45;
+          matchedTracker.smoothR += (radius - matchedTracker.smoothR) * 0.45;
+          matchedTracker.score = Math.round(matchedTracker.score * 0.65 + totalScore * 0.35);
+          matchedTracker.brix = brix;
+          matchedTracker.colorScore = colorScore;
+          matchedTracker.textureScore = textureScore;
+          matchedTracker.defectPen = defectPen;
+          matchedTracker.avgH = avgH;
+          matchedTracker.avgS = avgS;
+          matchedTracker.avgGrad = avgGrad;
+          matchedTracker.koreanName = koreanCategory;
+        } else {
+          const newId = `item_${nextTrackerId++}`;
+          activeTrackers.set(newId, {
+            id: newId,
+            smoothX: cx,
+            smoothY: cy,
+            smoothR: radius,
+            score: totalScore,
+            brix: brix,
+            colorScore: colorScore,
+            textureScore: textureScore,
+            defectPen: defectPen,
+            avgH: avgH,
+            avgS: avgS,
+            avgGrad: avgGrad,
+            koreanName: koreanCategory,
+            lastSeen: now,
+            matched: true
+          });
         }
       }
 
-      const avgH = sumH / Math.max(validPix, 1);
-      const avgS = sumS / Math.max(validPix, 1);
-      const avgGrad = sumGrad / Math.max(validPix, 1);
-
-      const isOrange = (bestDet.class === 'orange');
-      let colorScore, textScore, defectPen, calculatedScore, brix;
-
-      if (isOrange) {
-        colorScore = Math.max(12, Math.min(38, Math.round(38 - Math.abs(avgH - 24) * 0.65 + (avgS - 30) * 0.35)));
-        textScore = Math.max(15, Math.min(34, Math.round(18 + Math.min(avgGrad, 30) * 0.52)));
-        defectPen = Math.min(18, Math.floor(defectPix * 0.8));
-        calculatedScore = Math.max(55, Math.min(97, colorScore + textScore + 25 - defectPen));
-        brix = (9.2 + (colorScore / 38.0) * 4.3 - (defectPen * 0.05)).toFixed(1);
-      } else {
-        colorScore = Math.max(14, Math.min(38, Math.round(38 - Math.min(Math.abs(avgH - 0), Math.abs(avgH - 360)) * 0.6 + (avgS - 35) * 0.3)));
-        textScore = Math.max(15, Math.min(34, Math.round(20 + Math.min(avgGrad, 25) * 0.5)));
-        defectPen = Math.min(18, Math.floor(defectPix * 0.8));
-        calculatedScore = Math.max(55, Math.min(97, colorScore + textScore + 26 - defectPen));
-        brix = (11.0 + (colorScore / 38.0) * 3.5 - (defectPen * 0.05)).toFixed(1);
+      // 프레임 종료 후 미매칭된 오래된 트래커(화면 밖으로 나감) 제거
+      for (const [id, t] of activeTrackers.entries()) {
+        if (now - t.lastSeen > 400) {
+          activeTrackers.delete(id);
+        } else {
+          t.matched = false;
+        }
       }
 
-      const isMulti = detectedFoodItems.length >= 2;
-      const profile = {
-        name: isOrange ? (isMulti ? "제주 감귤 (2개 포착)" : "제주 감귤 (단일)") : "부사 꿀사과",
-        category: isOrange ? "🍊 감귤류 분석" : "🍎 과일 분석",
-        primaryLabel: `당도 ${brix} Brix (신선도 ${calculatedScore}%)`,
-        primaryPct: calculatedScore,
-        priceMain: isOrange ? (isMulti ? "2개 1,600원" : "1개 800원") : "1개 1,500원",
-        priceSub: isOrange ? "(개당 800원 / 100g 800원)" : "(100g당 750원)",
-        score: calculatedScore,
-        crown: calculatedScore >= 90 ? "특상급!" : (calculatedScore >= 80 ? "우수상품" : "일반과"),
-        recommendTitle: isMulti ? `좌측 1번 ${isOrange ? '감귤' : '사과'} 추천!` : `이 ${isOrange ? '감귤' : '사과'} 추천!`,
-        recommendSub: isMulti ? `[COCO AI] 1번(${calculatedScore}점, ${brix} Brix)이 2번 상품보다 과피 균일도와 당도가 더 우수합니다.` : `카메라 실측 당도 ${brix} Brix, 신선도 우수`
-      };
-
-      // 실시간 분해 수치 UI 업데이트 (바텀 시트 내부)
-      const cScore = document.getElementById('sheetColorScore');
-      const tScore = document.getElementById('sheetTextureScore');
-      const dPen = document.getElementById('sheetDefectPenalty');
-      const brixEl = document.getElementById('sheetBrix');
-      if (cScore) cScore.innerText = `+${colorScore}점 (H:${Math.round(avgH)}° S:${Math.round(avgS)}%)`;
-      if (tScore) tScore.innerText = `+${textScore}점 (질감:${Math.round(avgGrad)})`;
-      if (dPen) dPen.innerText = defectPen > 0 ? `-${defectPen}점` : '0점 (깨끗함)';
-      if (brixEl) brixEl.innerText = `${brix} Brix`;
-
-      if (isMulti) {
-        trayItems = [
-          { id: 'item_1', score: calculatedScore, thumb: isOrange ? 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300' : '/sample_data/real_apple_fresh_01.jpg' },
-          { id: 'item_2', score: Math.max(55, calculatedScore - 7), thumb: isOrange ? 'https://images.unsplash.com/photo-1557800636-894a64c1696f?w=300' : '/sample_data/real_apple_fresh_01.jpg' }
-        ];
-        renderTray();
-      }
-
-      transitionToState('LOCKED', profile);
       triggerBackendVerification(compCanvas, 'fruit');
     }
 
@@ -971,8 +1077,25 @@
       ctx.fillStyle = grad;
       ctx.fill();
 
-      // 시뮬레이션 모드에서는 사과가 존재하므로 LOCKED 상태 적용
-      targetPos = { x: 195, y: 390, r: 75 };
+      if (!activeTrackers.has('sim_apple')) {
+        activeTrackers.set('sim_apple', {
+          id: 'sim_apple',
+          smoothX: 195,
+          smoothY: 390,
+          smoothR: 70,
+          score: 92,
+          brix: '14.2',
+          colorScore: 36,
+          textureScore: 28,
+          defectPen: 0,
+          avgH: 5,
+          avgS: 40,
+          koreanName: '사과',
+          lastSeen: performance.now() + 10000000,
+          matched: true
+        });
+      }
+    }
       if (arState !== 'LOCKED') {
         transitionToState('LOCKED', FOOD_PROFILES.apple_red);
       }
@@ -999,15 +1122,17 @@
 
     function takeAutoSnapshot() {
       if (trayItems.length >= 3) return;
-      const scoreEl = document.getElementById('targetScoreNum');
-      const curScore = scoreEl ? parseInt(scoreEl.innerText) : 85;
-      const curThumb = (detectedFoodItems.length > 0 && detectedFoodItems[0].class === 'orange')
+      const trackerList = Array.from(activeTrackers.values());
+      if (trackerList.length === 0) return;
+
+      const bestItem = trackerList.reduce((max, t) => t.score > max.score ? t : max, trackerList[0]);
+      const curThumb = bestItem.koreanName.includes('귤')
         ? 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=300'
         : '/sample_data/real_apple_fresh_01.jpg';
 
       trayItems.push({
         id: `snap_${Date.now()}`,
-        score: curScore,
+        score: bestItem.score,
         thumb: curThumb,
       });
       renderTray();
@@ -1060,8 +1185,8 @@
     }
 
     window.onload = () => {
-      // 초기 상태는 탐색 대기(SEARCHING)
-      transitionToState('SEARCHING');
+      // 초기 상태: 탐색 대기 렌더링
+      renderActiveTrackers();
       loadCocoDetector();
       startCamera('environment');
       requestAnimationFrame(visionProcessingLoop);
