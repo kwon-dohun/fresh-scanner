@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🛒 FreshScanner - 실시간 AI 신선식품 장보기 스캐너 데모</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .mask-overlay {
+      mix-blend-mode: multiply;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+  <!-- 네비게이션 헤더 -->
+  <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-3">
+      <span class="text-2xl">🛒</span>
+      <div>
+        <h1 class="text-xl font-bold text-emerald-400">FreshScanner Live Inspector</h1>
+        <p class="text-xs text-gray-400">오프라인 현장형 AI 신선식품 실질 가성비 분석기 (Commercial Safe Edition)</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-2">
+      <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-500/30">100% Apache-2.0 / BSD</span>
+      <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-900/60 text-blue-300 border border-blue-500/30">0-Cost Serverless Cache</span>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- 좌측 컨트롤 패널 (입력 및 샘플 선택) -->
+    <div class="lg:col-span-5 space-y-6">
+      <!-- 1. 실사 샘플 원클릭 로더 -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md">
+        <h2 class="text-sm font-semibold text-gray-300 mb-3 flex items-center">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2"></span> 마트 실사 테스트 샘플 즉시 선택
+        </h2>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <button onclick="loadSample('real_pork_belly_pack_01.jpg', '삼겹살 황금비율 (살코기 70%)', 2680)" class="p-2.5 bg-gray-700 hover:bg-gray-650 rounded-lg text-left border border-gray-600 hover:border-emerald-500 transition">
+            <div class="font-bold text-white">🥩 1번 팩: 정상 삼겹살</div>
+            <div class="text-gray-400 text-[11px] mt-0.5">살코기 70% · 100g 2,680원</div>
+          </button>
+          <button onclick="loadSample('real_pork_fatty_03.jpg', '비계 과다 삼겹살 (지방 45%)', 2480)" class="p-2.5 bg-gray-700 hover:bg-gray-650 rounded-lg text-left border border-gray-600 hover:border-amber-500 transition">
+            <div class="font-bold text-amber-300">⚠️ 2번 팩: 떡지방 과다</div>
+            <div class="text-gray-400 text-[11px] mt-0.5">지방 45% · 100g 2,480원(할인)</div>
+          </button>
+          <button onclick="loadSample('real_beef_steak_02.jpg', '한우 등심 마블링', 11800)" class="p-2.5 bg-gray-700 hover:bg-gray-650 rounded-lg text-left border border-gray-600 hover:border-blue-500 transition">
+            <div class="font-bold text-blue-300">🥩 3번 팩: 한우 등심</div>
+            <div class="text-gray-400 text-[11px] mt-0.5">BMS 마블링 밀도 분석</div>
+          </button>
+          <button onclick="loadSample('real_watermelon_ripe_01.jpg', '수박 실물', 22500)" class="p-2.5 bg-gray-700 hover:bg-gray-650 rounded-lg text-left border border-gray-600 hover:border-purple-500 transition">
+            <div class="font-bold text-purple-300">🍉 4번 팩: 수박 완숙</div>
+            <div class="text-gray-400 text-[11px] mt-0.5">가보 필터 줄무늬 선명도</div>
+          </button>
+        </div>
+
+        <!-- 커스텀 이미지 업로드 -->
+        <div class="mt-4 pt-3 border-t border-gray-700">
+          <label class="block text-xs text-gray-400 mb-1.5 font-medium">내 사진 직접 업로드 분석</label>
+          <input type="file" id="fileInput" accept="image/*" class="block w-full text-xs text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+        </div>
+      </div>
+
+      <!-- 2. 광학 보정 토글 컨트롤러 -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md">
+        <h2 class="text-sm font-semibold text-gray-300 mb-3 flex items-center">
+          <span class="w-2 h-2 rounded-full bg-blue-400 mr-2"></span> 도메인 특화 광학 보정 엔진 설정
+        </h2>
+        <div class="space-y-3 text-xs">
+          <label class="flex items-center justify-between p-2.5 bg-gray-700/50 rounded-lg cursor-pointer">
+            <div>
+              <div class="font-bold text-gray-200">🏷️ 흰색 라벨 기준점 동적 WB</div>
+              <div class="text-gray-400 text-[11px]">정육 코너 붉은 LED 조명 역보정</div>
+            </div>
+            <input type="checkbox" id="wbToggle" checked class="w-4 h-4 text-emerald-600 rounded bg-gray-900 border-gray-600 focus:ring-emerald-500">
+          </label>
+          <label class="flex items-center justify-between p-2.5 bg-gray-700/50 rounded-lg cursor-pointer">
+            <div>
+              <div class="font-bold text-gray-200">✨ 랩 비닐 정반사광 인페인팅</div>
+              <div class="text-gray-400 text-[11px]">고광택 반사광의 비계 오인식 방지</div>
+            </div>
+            <input type="checkbox" id="glareToggle" checked class="w-4 h-4 text-emerald-600 rounded bg-gray-900 border-gray-600 focus:ring-emerald-500">
+          </label>
+          <label class="flex items-center justify-between p-2.5 bg-gray-700/50 rounded-lg cursor-pointer">
+            <div>
+              <div class="font-bold text-gray-200">🔍 팩 내부 ROI 자동 크롭</div>
+              <div class="text-gray-400 text-[11px]">선반 및 손가락 노이즈 배경 분리</div>
+            </div>
+            <input type="checkbox" id="roiToggle" checked class="w-4 h-4 text-emerald-600 rounded bg-gray-900 border-gray-600 focus:ring-emerald-500">
+          </label>
+        </div>
+
+        <button onclick="runAnalysis()" id="analyzeBtn" class="mt-4 w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg shadow transition flex justify-center items-center">
+          <span>🚀 정밀 AI 비전 분석 실행</span>
+        </button>
+      </div>
+
+      <!-- 3. 실시간 비교 트레이 (Tray Leaderboard) -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-sm font-semibold text-gray-300 flex items-center">
+            <span class="w-2 h-2 rounded-full bg-amber-400 mr-2"></span> 다중 팩 비교 트레이 (Tray)
+          </h2>
+          <span class="text-[11px] text-gray-400">매대 앞 눈치 극복 UX</span>
+        </div>
+        <div id="trayList" class="space-y-2 mt-3 text-xs">
+          <div class="text-gray-500 text-center py-4">팩 사진을 분석하면 여기에 비교 순위가 자동으로 쌓입니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측 분석 결과 뷰포트 & XAI 3단 리포트 -->
+    <div class="lg:col-span-7 space-y-6">
+      <!-- 뷰포트 카드 -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-sm font-semibold text-gray-300">비전 세그멘테이션 마스킹 뷰</h2>
+          <div class="flex space-x-3 text-xs">
+            <span class="flex items-center"><span class="w-3 h-3 bg-red-600 rounded mr-1"></span>살코기</span>
+            <span class="flex items-center"><span class="w-3 h-3 bg-yellow-400 rounded mr-1"></span>지방</span>
+            <span class="flex items-center"><span class="w-3 h-3 bg-blue-500 rounded mr-1"></span>뼈/라벨</span>
+          </div>
+        </div>
+
+        <div class="relative bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[340px] border border-gray-700">
+          <img id="previewImg" src="/static/placeholder.jpg" alt="미리보기" class="max-h-[380px] w-auto object-contain">
+          <div id="loadingOverlay" class="absolute inset-0 bg-black/75 hidden flex-col items-center justify-center space-y-3">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-400"></div>
+            <p class="text-xs text-emerald-300 font-medium">동적 화이트밸런스 및 픽셀 분할 연산 중...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- XAI 3단 리포트 카드 -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md space-y-4">
+        <div class="flex justify-between items-start border-b border-gray-700 pb-3">
+          <div>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-600/30">AI 정밀 분석 리포트</span>
+            <h3 id="reportTitle" class="text-lg font-bold text-white mt-1">대기 중...</h3>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-gray-400">종합 품질 점수</div>
+            <div id="reportScore" class="text-3xl font-extrabold text-emerald-400">-- <span class="text-sm font-normal text-gray-400">/ 100</span></div>
+          </div>
+        </div>
+
+        <!-- 1. 판단 근거 (Why) -->
+        <div>
+          <h4 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2 flex items-center">
+            💡 판단 근거 (Why)
+          </h4>
+          <div id="whyList" class="space-y-2 text-xs">
+            <div class="text-gray-500 italic">샘플 팩을 선택하고 분석을 실행해 보세요.</div>
+          </div>
+        </div>
+
+        <!-- 2. 실질 가성비 경제적 가치 비교 -->
+        <div id="roiCard" class="hidden p-3.5 bg-emerald-950/40 border border-emerald-500/40 rounded-lg text-xs">
+          <div class="font-bold text-emerald-300 flex items-center">
+            💰 순수 살코기 실질 단가 (True Lean Meat Price)
+          </div>
+          <div id="roiContent" class="text-gray-300 mt-1"></div>
+        </div>
+
+        <!-- 3. 사용자 최종 체크 (Human Check) -->
+        <div class="p-3.5 bg-amber-950/30 border border-amber-600/30 rounded-lg text-xs">
+          <div class="font-bold text-amber-400 flex items-center">
+            ⚠️ 사용자 최종 체크 (Human-in-the-Loop)
+          </div>
+          <p id="humanCheckText" class="text-gray-300 mt-1 leading-relaxed">
+            팩 아래쪽에 겹쳐서 보이지 않는 아랫줄 고기에 과도한 떡비계가 숨어있지 않은지 옆면을 살짝 기울여 확인해 보세요!
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentImageBlob = null;
+    let currentLabelPrice = 2680;
+    let trayHistory = [];
+
+    function loadSample(filename, label, price) {
+      currentLabelPrice = price;
+      document.getElementById('reportTitle').innerText = label;
+      const url = `/sample_data/${filename}`;
+      document.getElementById('previewImg').src = url;
+
+      fetch(url)
+        .then(r => r.blob())
+        .then(blob => {
+          currentImageBlob = blob;
+          runAnalysis();
+        })
+        .catch(e => {
+          console.warn("샘플 로드 실패:", e);
+        });
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      if (e.target.files && e.target.files[0]) {
+        currentImageBlob = e.target.files[0];
+        document.getElementById('previewImg').src = URL.createObjectURL(currentImageBlob);
+        document.getElementById('reportTitle').innerText = e.target.files[0].name;
+        runAnalysis();
+      }
+    });
+
+    async function runAnalysis() {
+      if (!currentImageBlob) {
+        alert("분석할 이미지를 먼저 선택하세요.");
+        return;
+      }
+
+      document.getElementById('loadingOverlay').classList.remove('hidden');
+      document.getElementById('loadingOverlay').classList.add('flex');
+
+      const formData = new FormData();
+      formData.append('image', currentImageBlob, 'target.jpg');
+
+      try {
+        const res = await fetch('/analyze/meat', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        // 렌더링
+        const leanPct = Math.round(data.lean_ratio * 100);
+        const fatPct = Math.round(data.fat_ratio * 100);
+        const unitP = data.price_per_100g || currentLabelPrice;
+        const effP = Math.round(unitP / Math.max(data.lean_ratio, 0.2));
+
+        document.getElementById('reportScore').innerHTML = `${leanPct > 65 ? 92 : 71} <span class="text-sm font-normal text-gray-400">/ 100</span>`;
+        document.getElementById('whyList').innerHTML = `
+          <div class="p-2.5 bg-gray-700/60 rounded-md">
+            <span class="font-bold text-emerald-400">[황금 비율]</span> 살코기 ${leanPct}% : 지방 ${fatPct}% 비율입니다.
+          </div>
+          <div class="p-2.5 bg-gray-700/60 rounded-md">
+            <span class="font-bold text-blue-400">[마블링 & 떡지방]</span> 근내 마블링 스코어 ${data.marbling_score}점 산출.
+          </div>
+          <div class="p-2.5 bg-gray-700/60 rounded-md">
+            <span class="font-bold text-amber-400">[육색 판정]</span> ${data.freshness_grade.toUpperCase()} (${data.color_score}점)
+          </div>
+        `;
+
+        document.getElementById('roiCard').classList.remove('hidden');
+        document.getElementById('roiContent').innerHTML = `
+          매대 표기 단가는 100g당 <strong>${unitP.toLocaleString()}원</strong>이나, 비계를 제외한 순수 살코기 기준 실질 단가는 100g당 <strong class="text-emerald-300 font-bold">${effP.toLocaleString()}원</strong>입니다.
+        `;
+
+        // 트레이에 추가
+        trayHistory.push({
+          name: document.getElementById('reportTitle').innerText,
+          unitP: unitP,
+          effP: effP,
+          lean: leanPct,
+        });
+        updateTrayUI();
+
+      } catch (err) {
+        alert("분석 중 오류 발생: " + err);
+      } finally {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        document.getElementById('loadingOverlay').classList.remove('flex');
+      }
+    }
+
+    function updateTrayUI() {
+      const container = document.getElementById('trayList');
+      if (trayHistory.length === 0) return;
+
+      const sorted = [...trayHistory].sort((a, b) => a.effP - b.effP);
+      const winner = sorted[0];
+
+      let html = '';
+      trayHistory.forEach((item, idx) => {
+        const isWin = (item.effP === winner.effP);
+        html += `
+          <div class="p-2.5 rounded-lg border ${isWin ? 'bg-emerald-950/60 border-emerald-500' : 'bg-gray-700/50 border-gray-600'} flex justify-between items-center">
+            <div>
+              <div class="font-bold ${isWin ? 'text-emerald-300' : 'text-gray-200'}">
+                ${isWin ? '🏆 [1위] ' : ''}${item.name}
+              </div>
+              <div class="text-[11px] text-gray-400">살코기 ${item.lean}% · 표기 ${item.unitP.toLocaleString()}원</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs font-bold ${isWin ? 'text-emerald-400' : 'text-amber-300'}">실질 ${item.effP.toLocaleString()}원</div>
+              <div class="text-[10px] text-gray-400">100g 기준</div>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    // 초기 로드
+    window.onload = () => {
+      loadSample('real_pork_belly_pack_01.jpg', '삼겹살 황금비율 (살코기 70%)', 2680);
+    };
+  </script>
+</body>
+</html>
