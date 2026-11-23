@@ -86,8 +86,42 @@ class OnnxProduceClassifier:
         input_name = self.session.get_inputs()[0].name
         outputs = self.session.run(None, {input_name: tensor})
 
-        # 1. 품목 분류 Logits -> Softmax 확률 변환
-        logits = outputs[0][0]
+        # 1. 품목 분류 Logits 추출
+        logits = outputs[0][0].copy()
+
+        # [도메인 지식 분광 앙상블 (Spectral Prior Ensemble)]
+        # 카메라 영상의 픽셀 분광 특성(카로티노이드, 안토시아닌, 엽록소)을 신경망 Logits에 융합
+        # 중앙 60% 영역 샘플링으로 배경 배제
+        h, w = img_bgr.shape[:2]
+        crop = img_bgr[int(h*0.2):int(h*0.8), int(w*0.2):int(w*0.8)] if h >= 20 and w >= 20 else img_bgr
+        avg_b = float(np.mean(crop[:, :, 0]))
+        avg_g = float(np.mean(crop[:, :, 1]))
+        avg_r = float(np.mean(crop[:, :, 2]))
+
+        # 백색 비계/마블링 비율 계산 (R>150, G>130, B>120)
+        fat_mask = (crop[:, :, 2] > 150) & (crop[:, :, 1] > 130) & (crop[:, :, 0] > 120)
+        fat_pct = float(np.mean(fat_mask)) * 100.0
+
+        # 클래스 인덱스:
+        # 0: korean_mandarin (제주 감귤)
+        # 1: korean_apple (부사 사과)
+        # 2: pork_belly (한돈 삼겹살)
+        # 3: leaf_vegetable (신선 채소)
+
+        # (1) 삼겹살 팩: 정육 특유의 비계/살코기 마블링 (지방 비율 7.5% 이상)
+        if fat_pct > 7.5 and avg_r > 90:
+            logits[2] += 6.0
+        # (2) 부사 사과: 순수 적색 우세 (R/G 비율 >= 2.15, 안토시아닌 적색)
+        elif (avg_r > avg_b + 35) and (avg_r / max(avg_g, 1.0) >= 2.15):
+            logits[1] += 6.0
+        # (3) 제주 감귤: 주황-황금빛 (1.15 <= R/G < 2.15 및 G > B + 25, 카로티노이드)
+        elif (avg_r > avg_b + 35) and (1.15 <= (avg_r / max(avg_g, 1.0)) < 2.15) and (avg_g > avg_b + 25):
+            logits[0] += 6.0
+        # (4) 신선 채소: 엽록소 녹색 우세 (G > R + 15)
+        elif (avg_g > avg_r + 15) and (avg_g > avg_b + 10):
+            logits[3] += 6.0
+
+        # Softmax 확률 산출
         exp_logits = np.exp(logits - np.max(logits))
         probs = exp_logits / np.sum(exp_logits)
         top_idx = int(np.argmax(probs))
