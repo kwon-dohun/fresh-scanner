@@ -48,8 +48,8 @@ class FruitAnalyzerService:
             k_name = "사과"
             if fruit_type == "watermelon":
                 k_name = "수박"
-            elif fruit_type == "hallabong":
-                k_name = "한라봉"
+            elif fruit_type in ("hallabong", "tangerine", "citrus"):
+                k_name = "감귤"
             elif fruit_type in ("grape", "shine_muscat"):
                 k_name = "포도"
             elif fruit_type == "strawberry":

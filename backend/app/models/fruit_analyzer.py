@@ -51,6 +51,16 @@ _FRUIT_COLOR_RANGES: Dict[str, List[Tuple[str, np.ndarray, np.ndarray]]] = {
         ("orange", np.array([10, 100, 100]), np.array([25, 255, 255])),
         ("green_stem", np.array([35, 40, 40]), np.array([85, 255, 200])),
     ],
+    "tangerine": [
+        ("orange", np.array([8, 50, 50]), np.array([25, 255, 255])),
+        ("yellow_orange", np.array([25, 40, 80]), np.array([35, 255, 255])),
+        ("green_stem", np.array([35, 40, 40]), np.array([85, 255, 200])),
+    ],
+    "citrus": [
+        ("orange", np.array([8, 50, 50]), np.array([25, 255, 255])),
+        ("yellow_orange", np.array([25, 40, 80]), np.array([35, 255, 255])),
+        ("green_stem", np.array([35, 40, 40]), np.array([85, 255, 200])),
+    ],
     "grape": [
         ("purple", np.array([120, 30, 30]), np.array([160, 255, 200])),
         ("dark_red", np.array([0, 50, 20]), np.array([10, 255, 150])),
