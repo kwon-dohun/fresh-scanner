@@ -140,8 +140,11 @@ class MeatSegmentor:
         # 1. 랩 반사광 제거
         non_glare = self.remove_packaging_glare(image)
 
-        # 2. 정육 특수 조명 보정
-        corrected = self.correct_butcher_lighting(non_glare)
+        # 2. 동적 화이트밸런스 (1순위: 흰색 라벨 기준점 보정 -> 실패 시 2순위: Minkowski 고차 광원 추정)
+        from backend.app.models.optical_calibrator import WhiteLabelReferenceWB
+        corrected, calibrated_with_label = WhiteLabelReferenceWB.calibrate_with_label(non_glare)
+        if not calibrated_with_label:
+            corrected = self.correct_butcher_lighting(non_glare)
 
         # 3. 정밀 전경(Meat Cut) 분리
         hsv = cv2.cvtColor(corrected, cv2.COLOR_BGR2HSV)

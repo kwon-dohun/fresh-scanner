@@ -1,0 +1,37 @@
+name: Daily KAMIS Price Sync (0-Cost Pipeline)
+
+on:
+  schedule:
+    # 매일 00:30 UTC = 09:30 KST (한국 장보기 시작 전 매일 아침 최신화)
+    - cron: '30 0 * * *'
+  workflow_dispatch: # 수동 실행 트리거
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install aiohttp
+
+      - name: Run KAMIS Sync Script
+        env:
+          KAMIS_API_KEY: ${{ secrets.KAMIS_API_KEY }}
+          KAMIS_API_ID: ${{ secrets.KAMIS_API_ID }}
+        run: |
+          python scripts/kamis_daily_cron.py
+
+      - name: Commit and Push kamis_today.json
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action KAMIS Bot"
+          git add data/kamis_today.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore(data): auto-sync daily KAMIS price $(date +'%Y-%m-%d')" && git push)

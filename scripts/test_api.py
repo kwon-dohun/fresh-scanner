@@ -120,6 +120,36 @@ def run_tests() -> None:
     for item in s_body["items"][:5]:
         print(f"       - {item['name']}: {item['quantity']}{item['unit']} (냉장고 보유: {item['in_fridge']})")
 
+    print("\n--- 9. 촬영 전 실시간 품질 게이트 검증 (/compare/quality-check) ---")
+    files = {"image": ("frame.jpg", meat_bytes, "image/jpeg")}
+    res = client.post("/compare/quality-check", files=files)
+    assert res.status_code == 200
+    q_body = res.json()
+    print(f"[PASS] /compare/quality-check: 촬영허용={q_body['can_capture']}, 선명도={q_body['blur_score']}, 반사광비율={q_body['glare_ratio']*100:.1f}%")
+    print(f"       가이드 메시지: {q_body['messages']}")
+
+    print("\n--- 10. 다중 팩 비교 트레이 (/compare/tray) ---")
+    # 2팩 비교 테스트 (살코기 많은 팩 vs 비계 많은 팩)
+    meat_pack_1 = meat_bytes
+    # 2번 팩 (지방 비율이 더 높은 합성 팩)
+    img2 = np.zeros((300, 300, 3), dtype=np.uint8)
+    img2[:, :] = (30, 30, 200)
+    cv2.rectangle(img2, (10, 10), (250, 180), (220, 230, 230), -1)  # 큰 떡지방
+    _, buf2 = cv2.imencode(".jpg", img2)
+    meat_pack_2 = buf2.tobytes()
+
+    multi_files = [
+        ("images", ("pack1.jpg", meat_pack_1, "image/jpeg")),
+        ("images", ("pack2.jpg", meat_pack_2, "image/jpeg")),
+    ]
+    res = client.post("/compare/tray", files=multi_files)
+    assert res.status_code == 200
+    t_body = res.json()
+    print(f"[PASS] /compare/tray: 총 비교={t_body['total_candidates']}팩, 가성비 1위={t_body['winner_id']}번 팩")
+    print(f"       브리핑: {t_body['summary_verdict']}")
+    for c in t_body["candidates"]:
+        print(f"       후보 {c['candidate_id']}번: 실질단가={int(c['effective_lean_price'])}원, {c['badge']} ({c['verdict']})")
+
     print("\n=======================================================")
     print(" 🎉 모든 SOTA 비전 파이프라인 및 백엔드 API 검증 100% 통과!")
     print("=======================================================\n")

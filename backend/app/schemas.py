@@ -168,3 +168,39 @@ class ShoppingListResponse(BaseModel):
     items: list[ShoppingItem] = []
     total: int = 0
     checked_count: int = 0
+
+
+# ───────────────────────── Pre-Capture Quality Gate ─────────────────────────
+
+class QualityCheckResponse(BaseModel):
+    """촬영 직전 실시간 프레임 품질 체크 응답."""
+    can_capture: bool
+    blur_score: float
+    glare_ratio: float
+    messages: list[str] = []
+
+
+# ───────────────────────── Comparison Tray (다중 팩 비교 트레이) ─────────────────────────
+
+class ComparisonCandidateItem(BaseModel):
+    """비교 트레이 내 개별 후보 상품."""
+    candidate_id: int
+    label_price_per_100g: Optional[float] = None
+    lean_ratio: float = Field(..., description="살코기 비율")
+    fat_ratio: float = Field(..., description="지방 비율")
+    effective_lean_price: Optional[float] = Field(None, description="순수 살코기 기준 실질 100g 단가")
+    overall_score: float
+    rank: int
+    badge: str = Field("후보", description="1위 뱃지 / 가성비 뱃지")
+    verdict: str
+    thumbnail_url: Optional[str] = None
+
+
+class ComparisonTrayResponse(BaseModel):
+    """2~4팩 연속 촬영 비교 트레이 최종 응답."""
+    total_candidates: int
+    winner_id: int
+    winner_badge: str
+    summary_verdict: str
+    candidates: list[ComparisonCandidateItem] = []
+

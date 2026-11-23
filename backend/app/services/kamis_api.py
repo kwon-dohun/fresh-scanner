@@ -14,6 +14,7 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 BENCHMARK_PATH = Path(__file__).resolve().parents[3] / "data" / "benchmark_kamis_dataset.json"
+TODAY_PATH = Path(__file__).resolve().parents[3] / "data" / "kamis_today.json"
 
 
 @dataclass
@@ -87,7 +88,18 @@ class KAMISClient:
 
     @staticmethod
     def _load_benchmark() -> dict[str, Any]:
-        """로컬 고품질 벤치마크 데이터셋 로드."""
+        """로컬 고품질 벤치마크 및 일일 동기화 데이터셋 로드."""
+        # 1. GitHub Actions가 오늘 아침 동기화한 최신 파일 확인
+        if TODAY_PATH.exists():
+            try:
+                with open(TODAY_PATH, "r", encoding="utf-8") as f:
+                    today_data = json.load(f).get("items", {})
+                    if today_data:
+                        return today_data
+            except Exception:
+                pass
+
+        # 2. 벤치마크 데이터셋 확인
         if BENCHMARK_PATH.exists():
             try:
                 with open(BENCHMARK_PATH, "r", encoding="utf-8") as f:

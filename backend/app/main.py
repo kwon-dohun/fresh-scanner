@@ -62,11 +62,13 @@ from backend.app.api.scan import router as scan_router  # noqa: E402
 from backend.app.api.analyze import router as analyze_router  # noqa: E402
 from backend.app.api.inventory import router as inventory_router  # noqa: E402
 from backend.app.api.shopping_list import router as shopping_router  # noqa: E402
+from backend.app.api.compare import router as compare_router  # noqa: E402
 
 app.include_router(scan_router)
 app.include_router(analyze_router)
 app.include_router(inventory_router)
 app.include_router(shopping_router)
+app.include_router(compare_router)
 
 # ── 정적 파일 (업로드 이미지) ──
 uploads_path = Path(settings.UPLOAD_DIR)
