@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🛒 FreshScanner AR - 전 품목 실시간 라이브 AI 스캐너</title>
+  <title>🛒 FreshScanner AR - 실시간 현장형 AI 장보기 어시스턴트</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .glass-card {
@@ -16,11 +16,11 @@
       position: absolute;
       width: 20px;
       height: 20px;
-      border-color: #4ade80;
+      transition: all 0.3s ease;
     }
     @keyframes pulse-ring {
       0%, 100% { transform: scale(1); opacity: 0.95; }
-      50% { transform: scale(1.04); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 0.75; }
     }
     .animate-pulse-ring {
       animation: pulse-ring 1.8s ease-in-out infinite;
@@ -28,31 +28,43 @@
     .badge-shadow {
       filter: drop-shadow(0 4px 14px rgba(34, 197, 94, 0.65));
     }
+    @keyframes scan-line {
+      0% { top: 10%; opacity: 0; }
+      50% { opacity: 0.8; }
+      100% { top: 90%; opacity: 0; }
+    }
+    .animate-scan {
+      animation: scan-line 2.2s ease-in-out infinite;
+    }
   </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans selection:bg-emerald-500 selection:text-white">
 
-  <!-- ── 글로벌 네비게이션 헤더 ── -->
+  <!-- ── 상단 글로벌 헤더 ── -->
   <header class="bg-gray-900/95 border-b border-gray-800 px-6 py-3 flex flex-wrap justify-between items-center sticky top-0 z-50 backdrop-blur-md">
     <div class="flex items-center space-x-3">
       <span class="text-2xl p-1 bg-emerald-950 rounded-xl border border-emerald-500/30">🛒</span>
       <div>
         <div class="flex items-center space-x-2">
-          <h1 class="text-base md:text-lg font-black text-white tracking-tight">FreshScanner Universal AR</h1>
-          <span class="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full animate-pulse">● ALL FRESH FOODS</span>
+          <h1 class="text-base md:text-lg font-black text-white tracking-tight">FreshScanner Live AR</h1>
+          <span id="systemStatusPill" class="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-300 border border-gray-700 rounded-full">● 스캔 대기 중</span>
         </div>
-        <p class="text-[11px] text-gray-400">사과 · 수박 · 삼겹살 · 한우 · 시금치 · 대파 등 모든 식재료를 실시간 자동 감지하여 최적의 상품 추천</p>
+        <p class="text-[11px] text-gray-400">식재료가 인식될 때만 점수와 가성비를 오버레이하는 현장형 스마트 장보기 AI</p>
       </div>
     </div>
 
-    <!-- 카메라 / 시뮬레이션 소스 전환 & 랩 전환 -->
+    <!-- 카메라 컨트롤 & 소스 전환 -->
     <div class="flex items-center space-x-3 mt-2 sm:mt-0">
+      <button onclick="toggleCameraFacing()" id="flipCamBtn" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition flex items-center space-x-1.5">
+        <span>🔄 카메라 전환</span>
+      </button>
+
       <div class="flex items-center bg-gray-800 p-1 rounded-xl border border-gray-700 text-xs">
         <button onclick="setSource('camera')" id="srcBtnCamera" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5 bg-emerald-600 text-white shadow">
-          <span>📷 내 카메라 (웹캠/스마트폰)</span>
+          <span>📷 실시간 카메라</span>
         </button>
         <button onclick="setSource('simulation')" id="srcBtnSim" class="px-3 py-1.5 rounded-lg font-bold text-gray-400 hover:text-gray-200 transition flex items-center space-x-1.5">
-          <span>🛒 마트 전 품목 시뮬레이터</span>
+          <span>🛒 가상 매대 시뮬레이션</span>
         </button>
       </div>
 
@@ -62,33 +74,45 @@
     </div>
   </header>
 
-  <!-- ── 품목 즉시 선택 퀵 바 (전 품목 지원) ── -->
-  <div class="bg-gray-900/60 border-b border-gray-800/80 px-4 py-2.5 flex items-center justify-center overflow-x-auto gap-2 text-xs">
-    <span class="text-gray-400 font-bold shrink-0 mr-1">🎯 실시간 분석 품목:</span>
-    <button onclick="changeCategory('auto')" id="catBtn_auto" class="px-2.5 py-1 rounded-lg font-bold bg-emerald-600 text-white shadow border border-emerald-500/40">⚡ AI 자동 감지</button>
-    <button onclick="changeCategory('meat_pork')" id="catBtn_meat_pork" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700">🥩 삼겹살 (살코기/지방/떡지방)</button>
-    <button onclick="changeCategory('meat_beef')" id="catBtn_meat_beef" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700">🥩 한우 등심 (BMS 마블링)</button>
-    <button onclick="changeCategory('fruit_apple')" id="catBtn_fruit_apple" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700">🍎 사과 (당도/색택)</button>
-    <button onclick="changeCategory('fruit_watermelon')" id="catBtn_fruit_watermelon" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700">🍉 수박 (줄무늬/배꼽)</button>
-    <button onclick="changeCategory('veg_spinach')" id="catBtn_veg_spinach" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700">🥬 시금치/채소 (GLI/짓무름)</button>
+  <!-- ── 책상/PC 테스트용 가상 식재료 팔레트 (실제 과일/고기가 없을 때 원클릭으로 카메라에 주입) ── -->
+  <div class="bg-gray-900/80 border-b border-gray-800 px-4 py-2 flex flex-wrap items-center justify-center gap-2 text-xs">
+    <span class="text-gray-400 font-bold shrink-0">🍎 식재료 테스트 샘플 (원클릭 감지):</span>
+    <button onclick="injectVirtualSample('pork_belly')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-emerald-950/80 border border-gray-700 hover:border-emerald-500/50 text-gray-200 transition">
+      🥩 삼겹살 팩 (지방 30%)
+    </button>
+    <button onclick="injectVirtualSample('pork_fatty')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-amber-950/80 border border-gray-700 hover:border-amber-500/50 text-gray-200 transition">
+      ⚠️ 떡지방 삼겹살 (지방 45%)
+    </button>
+    <button onclick="injectVirtualSample('apple_red')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-emerald-950/80 border border-gray-700 hover:border-emerald-500/50 text-gray-200 transition">
+      🍎 꿀사과 (신선도 95%)
+    </button>
+    <button onclick="injectVirtualSample('watermelon')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-purple-950/80 border border-gray-700 hover:border-purple-500/50 text-gray-200 transition">
+      🍉 고당도 수박 (완숙)
+    </button>
+    <button onclick="injectVirtualSample('spinach')" class="px-2.5 py-1 rounded-lg font-bold bg-gray-800 hover:bg-green-950/80 border border-gray-700 hover:border-green-500/50 text-gray-200 transition">
+      🥬 시금치 (초신선 GLI)
+    </button>
+    <button onclick="clearVirtualSample()" class="px-2 py-1 rounded-lg text-gray-400 hover:text-white bg-gray-850 border border-gray-750">
+      ✕ 비우기 (직접 카메라 비추기)
+    </button>
   </div>
 
   <!-- ============================================================== -->
-  <!-- 60FPS 온디바이스 AR HUD 라이브 뷰어 (전 품목 적응형) -->
+  <!-- 60FPS 온디바이스 AR HUD 라이브 뷰어 -->
   <!-- ============================================================== -->
   <section id="arHudView" class="max-w-6xl mx-auto py-5 px-4 flex flex-col items-center">
     
-    <!-- 실시간 상태 및 상호작용 컨트롤 바 -->
-    <div class="w-full max-w-4xl mb-4 bg-gray-900/80 border border-gray-800 rounded-2xl p-4 flex flex-wrap items-center justify-between text-xs gap-3 shadow-lg">
+    <!-- 실시간 상태 피드백 바 -->
+    <div class="w-full max-w-4xl mb-4 bg-gray-900/90 border border-gray-800 rounded-2xl p-4 flex flex-wrap items-center justify-between text-xs gap-3 shadow-lg">
       <div class="flex items-center space-x-3">
-        <span class="text-xl">⚡</span>
+        <span id="engineStateIcon" class="text-xl">🔍</span>
         <div>
-          <div class="font-bold text-emerald-400 text-sm flex items-center space-x-2">
-            <span id="activeEngineLabel">AI 실시간 전 품목 스캐너 가동 중</span>
+          <div class="font-bold text-white text-sm flex items-center space-x-2">
+            <span id="engineStateTitle">식재료를 화면 중앙에 비춰주세요</span>
             <span id="fpsCounter" class="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-800 text-emerald-300 border border-gray-700">30 FPS</span>
           </div>
-          <div id="activeCategoryHint" class="text-gray-400 text-[11px] mt-0.5">
-            카메라에 식재료를 비추면 <span class="text-emerald-300 font-bold">정육(비계율) / 과일(당도) / 채소(신선도)</span>를 자동으로 인식하여 품목별 전용 HUD를 띄웁니다.
+          <div id="engineStateDesc" class="text-gray-400 text-[11px] mt-0.5">
+            사람 얼굴이나 빈 방에서는 점수가 뜨지 않으며, <span class="text-emerald-300 font-bold">실제 과일·정육·채소</span>가 들어올 때만 초록색 링과 점수 배지가 활성화됩니다.
           </div>
         </div>
       </div>
@@ -106,24 +130,27 @@
     <!-- 스마트폰 베젤 디스플레이 시뮬레이터 -->
     <div class="relative w-[390px] h-[780px] bg-black rounded-[52px] p-3 shadow-2xl border-[6px] border-gray-800 overflow-hidden select-none">
       
-      <!-- 아이폰 상단 다이내믹 아일랜드 -->
+      <!-- 다이내믹 아일랜드 -->
       <div class="absolute top-4 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-full z-40 flex items-center justify-center">
         <div class="w-2.5 h-2.5 rounded-full bg-blue-950/80 border border-blue-800"></div>
       </div>
 
-      <!-- 내부 화면 뷰포트 -->
+      <!-- 내부 뷰포트 -->
       <div class="relative w-full h-full rounded-[44px] overflow-hidden bg-black flex items-center justify-center">
         
         <!-- ── 1. 실제 카메라 비디오 스트림 ── -->
         <video id="liveVideo" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
 
-        <!-- ── 2. 시뮬레이션 매대 캔버스 ── -->
+        <!-- ── 2. 가상 시뮬레이션 매대 캔버스 ── -->
         <canvas id="liveSimCanvas" width="390" height="780" class="absolute inset-0 w-full h-full object-cover"></canvas>
 
         <!-- ── 3. 비전 연산용 백그라운드 캔버스 (숨김) ── -->
         <canvas id="computeCanvas" width="160" height="320" class="hidden"></canvas>
 
-        <!-- ── 4. 스마트 카트 상단 헤더 ── -->
+        <!-- ── 4. 주입된 가상 식재료 오버레이 (데스크탑 테스트용) ── -->
+        <img id="virtualProduceImg" src="" alt="가상 식재료" class="absolute z-10 w-48 h-48 object-contain hidden pointer-events-none transition-all duration-300">
+
+        <!-- ── 5. 상단 스마트 헤더 ── -->
         <div class="absolute top-10 left-5 right-5 flex justify-between items-center z-30">
           <div class="flex items-center space-x-2">
             <span class="text-xl text-emerald-400">🛒</span>
@@ -131,7 +158,7 @@
           </div>
           <div class="flex items-center space-x-2">
             <div id="priceLockBadge" class="hidden px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black tracking-tighter shadow-lg">
-              🔒 매대 가격 고정됨
+              🔒 1,500원 고정됨
             </div>
             <div class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 text-white text-xs font-bold">
               👤
@@ -139,46 +166,46 @@
           </div>
         </div>
 
-        <!-- ── 5. 좌측 상단 AI 어시스턴트 상태 카드 ── -->
+        <!-- ── 6. 좌측 상단 AI 어시스턴트 상태 카드 ── -->
         <div class="absolute top-24 left-3 w-[154px] glass-card rounded-2xl p-3 z-30 text-white shadow-xl">
           <div class="flex items-center space-x-1.5 mb-2">
             <span class="text-sm">✨</span>
             <div>
-              <div id="hudCategoryBadge" class="text-[11px] font-black text-emerald-300">🍎 과일 분석 모드</div>
-              <div class="text-[8px] text-gray-300">품목 맞춤형 실시간 품질 측정 중</div>
+              <div id="hudCategoryBadge" class="text-[11px] font-black text-gray-300">식재료 탐색 중...</div>
+              <div class="text-[8px] text-gray-400">카메라 프레임 실시간 모니터링</div>
             </div>
           </div>
           <div class="h-px bg-white/15 my-2"></div>
           <div class="space-y-1.5 text-[9px]">
-            <div class="flex items-center space-x-1.5 text-emerald-300 font-bold">
-              <span id="metric1Icon">🌿</span> <span id="metric1Text">외관 품질 분석 완료 (95%)</span>
+            <div class="flex items-center space-x-1.5 text-gray-300 font-bold">
+              <span id="metric1Icon">📷</span> <span id="metric1Text">카메라 정상 작동 중</span>
             </div>
-            <div class="flex items-center space-x-1.5 text-gray-200">
-              <span id="metric2Icon">⚖️</span> <span id="metric2Text">단위 가격 계산 완료</span>
+            <div class="flex items-center space-x-1.5 text-gray-400">
+              <span id="metric2Icon">📐</span> <span id="metric2Text">라플라시안 선명도: 양호</span>
             </div>
-            <div class="flex items-center space-x-1.5 text-gray-300">
-              <span id="metric3Icon">⭐</span> <span id="metric3Text">품종 기준 적합도 양호</span>
+            <div class="flex items-center space-x-1.5 text-gray-400">
+              <span id="metric3Icon">💡</span> <span id="metric3Text">매대 조명 상태: 적정</span>
             </div>
           </div>
         </div>
 
-        <!-- ── 6. 좌측 하단 대체 매대 추천 카드 ── -->
-        <div class="absolute bottom-36 left-3 w-[154px] glass-card rounded-2xl p-2.5 z-30 text-white shadow-xl">
+        <!-- ── 7. 좌측 하단 대체 매대 추천 카드 ── -->
+        <div id="leftBottomCard" class="hidden absolute bottom-36 left-3 w-[154px] glass-card rounded-2xl p-2.5 z-30 text-white shadow-xl transition-all duration-300">
           <div class="text-[9.5px] font-black mb-1.5 text-white">근처 더 좋은 상품이 있어요!</div>
           <div class="flex items-center space-x-2">
             <img id="altRecommendThumb" src="/sample_data/real_apple_fresh_01.jpg" alt="대체 매대" class="w-10 h-10 rounded-lg object-cover border border-white/20">
             <div class="flex-1">
-              <div id="altRecommendText" class="text-[8px] text-gray-300 leading-tight">B-3 매대에 당도 높은 신규 입고 상품이 있습니다.</div>
+              <div id="altRecommendText" class="text-[8px] text-gray-300 leading-tight">다른 매대에 더 신선한 상품이 있습니다.</div>
               <button onclick="alert('할인 매대 경로 안내를 시작합니다.')" class="mt-1 px-1.5 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[7.5px] font-bold">이동하기 ›</button>
             </div>
           </div>
         </div>
 
-        <!-- ── 7. 중앙 실시간 AR 타겟팅 링 & 배지 ── -->
-        <div id="arTrackerGroup" class="absolute pointer-events-none z-30 transition-all duration-150 ease-out flex flex-col items-center justify-center" style="top: 260px; left: 120px; width: 160px; height: 160px;">
+        <!-- ── 8. 중앙 실시간 AR 타겟팅 링 & 배지 (물체 감지 시에만 녹색 전환 및 점수 표시) ── -->
+        <div id="arTrackerGroup" class="absolute pointer-events-none z-30 transition-all duration-150 ease-out flex flex-col items-center justify-center" style="top: 260px; left: 115px; width: 160px; height: 160px;">
           
-          <!-- 상단 플로팅 배지 -->
-          <div class="mb-2 flex flex-col items-center badge-shadow">
+          <!-- 상단 플로팅 배지 (감지되지 않았을 때는 완전 숨김) -->
+          <div id="targetBadgeContainer" class="hidden mb-2 flex flex-col items-center badge-shadow transition-all duration-300">
             <div id="targetScore" class="bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg">
               92점
             </div>
@@ -187,72 +214,87 @@
             </div>
           </div>
 
-          <!-- 타겟팅 링 본체 -->
-          <div id="targetReticleRing" class="relative w-[140px] h-[140px] rounded-full border-2 border-emerald-400/80 border-dashed animate-pulse-ring flex items-center justify-center">
-            <div class="reticle-corner top-[-4px] left-[-4px] border-t-4 border-l-4 rounded-tl-lg"></div>
-            <div class="reticle-corner top-[-4px] right-[-4px] border-t-4 border-r-4 rounded-tr-lg"></div>
-            <div class="reticle-corner bottom-[-4px] left-[-4px] border-b-4 border-l-4 rounded-bl-lg"></div>
-            <div class="reticle-corner bottom-[-4px] right-[-4px] border-b-4 border-r-4 rounded-br-lg"></div>
-            <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+          <!-- 타겟팅 링 본체 (탐색 중: 회색 점선 / 감지 완료: 초록색 펄스 링) -->
+          <div id="targetReticleRing" class="relative w-[140px] h-[140px] rounded-full border-2 border-dashed border-gray-400/60 flex items-center justify-center transition-all duration-300">
+            <!-- 스캔 레이더 라인 (탐색 중일 때만 표시) -->
+            <div id="scanLine" class="absolute w-[80%] h-0.5 bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-scan"></div>
+
+            <div class="reticle-corner top-[-4px] left-[-4px] border-t-4 border-l-4 rounded-tl-lg border-gray-400"></div>
+            <div class="reticle-corner top-[-4px] right-[-4px] border-t-4 border-r-4 rounded-tr-lg border-gray-400"></div>
+            <div class="reticle-corner bottom-[-4px] left-[-4px] border-b-4 border-l-4 rounded-bl-lg border-gray-400"></div>
+            <div class="reticle-corner bottom-[-4px] right-[-4px] border-b-4 border-r-4 rounded-br-lg border-gray-400"></div>
+            <div id="reticleDot" class="w-2 h-2 rounded-full bg-gray-400"></div>
+          </div>
+
+          <!-- 타겟팅 링 하단 탐색 안내 텍스트 -->
+          <div id="searchingPrompt" class="mt-2 text-[10px] font-bold text-gray-300 bg-black/60 px-2 py-0.5 rounded-full border border-white/20">
+            식재료 탐색 중...
           </div>
         </div>
 
-        <!-- ── 8. 우측 글래스모피즘 HUD 상세 카드 (품목별 전용 지표) ── -->
-        <div class="absolute top-24 right-3 w-[158px] glass-card rounded-2xl p-3 z-30 text-white shadow-xl">
-          <!-- 1차 핵심 지표 (신선도 / 살코기비율 / GLI 등) -->
-          <div class="flex items-center space-x-1 text-xs font-black">
-            <span class="text-emerald-400">✔️</span>
-            <span id="cardPrimaryLabel">신선도 95%</span>
-          </div>
-          <div class="w-full bg-white/20 h-1.5 rounded-full mt-1.5 overflow-hidden">
-            <div id="cardPrimaryBar" class="bg-emerald-400 h-full rounded-full transition-all duration-300" style="width: 95%;"></div>
-          </div>
-
-          <!-- 2차 도메인 지표 (마블링 / 당도 / 크기 / 떡지방) -->
-          <div class="flex items-center space-x-1.5 text-[10px] text-gray-200 mt-2.5">
-            <span id="cardSecondaryIcon">⚖️</span>
-            <span id="cardSecondaryText" class="font-bold">크기 적당 (약 200g)</span>
-          </div>
-
-          <!-- 가격 및 실질 가성비 단가 -->
-          <div class="flex items-start space-x-1.5 text-[10.5px] mt-2">
-            <span class="font-bold">₩</span>
-            <div>
-              <div id="cardPriceMain" class="font-black text-white text-[11.5px]">가격 1,500원</div>
-              <div id="cardPriceSub" class="text-[9px] text-gray-300">(100g당 750원)</div>
+        <!-- ── 9. 우측 글래스모피즘 HUD 상세 카드 ── -->
+        <div id="rightDetailCard" class="absolute top-24 right-3 w-[158px] glass-card rounded-2xl p-3 z-30 text-white shadow-xl">
+          <!-- 대기 상태 플레이스홀더 (식재료 없을 때) -->
+          <div id="hudStandbyContent" class="text-center py-4">
+            <span class="text-2xl">📸</span>
+            <div class="text-[11px] font-bold mt-2 text-white">스캔 대기 중</div>
+            <div class="text-[8.5px] text-gray-400 mt-1 leading-tight">
+              매대 상품(과일·정육·채소)을 비추면 실시간 분석 정보가 나타납니다.
             </div>
           </div>
 
-          <!-- 가성비 뱃지 -->
-          <div id="cardValueBadge" class="mt-2.5 inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400 text-emerald-400 text-[9.5px] font-black">
-            <span id="cardValueBadgeIcon">👍</span> <span id="cardValueBadgeText">가성비 우수</span>
-          </div>
-
-          <!-- 자동 비교 트레이 섹션 -->
-          <div class="mt-3 pt-2.5 border-t border-white/15">
-            <div class="flex justify-between items-center mb-1.5">
-              <span class="text-[9.5px] font-bold text-gray-300">비교 상품</span>
-              <span id="trayCount" class="text-[8px] text-emerald-400 font-mono">1/3</span>
+          <!-- 감지 완료 시 표시되는 상세 분석 콘텐츠 (초기에는 숨김) -->
+          <div id="hudActiveContent" class="hidden">
+            <div class="flex items-center space-x-1 text-xs font-black">
+              <span class="text-emerald-400">✔️</span>
+              <span id="cardPrimaryLabel">신선도 95%</span>
             </div>
-            <div id="hudThumbRow" class="grid grid-cols-3 gap-1.5 text-center">
-              <!-- 자동 스냅샷 썸네일 -->
+            <div class="w-full bg-white/20 h-1.5 rounded-full mt-1.5 overflow-hidden">
+              <div id="cardPrimaryBar" class="bg-emerald-400 h-full rounded-full transition-all duration-300" style="width: 95%;"></div>
+            </div>
+
+            <div class="flex items-center space-x-1.5 text-[10px] text-gray-200 mt-2.5">
+              <span id="cardSecondaryIcon">⚖️</span>
+              <span id="cardSecondaryText" class="font-bold">크기 적당 (약 200g)</span>
+            </div>
+
+            <div class="flex items-start space-x-1.5 text-[10.5px] mt-2">
+              <span class="font-bold">₩</span>
+              <div>
+                <div id="cardPriceMain" class="font-black text-white text-[11.5px]">가격 1,500원</div>
+                <div id="cardPriceSub" class="text-[9px] text-gray-300">(100g당 750원)</div>
+              </div>
+            </div>
+
+            <div id="cardValueBadge" class="mt-2.5 inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400 text-emerald-400 text-[9.5px] font-black">
+              <span id="cardValueBadgeIcon">👍</span> <span id="cardValueBadgeText">가성비 우수</span>
+            </div>
+
+            <div class="mt-3 pt-2.5 border-t border-white/15">
+              <div class="flex justify-between items-center mb-1.5">
+                <span class="text-[9.5px] font-bold text-gray-300">비교 상품</span>
+                <span id="trayCount" class="text-[8px] text-emerald-400 font-mono">0/3</span>
+              </div>
+              <div id="hudThumbRow" class="grid grid-cols-3 gap-1.5 text-center">
+                <!-- 자동 스냅샷 썸네일 -->
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- ── 9. 하단 추천 배너 ── -->
+        <!-- ── 10. 하단 안내 배너 ── -->
         <div class="absolute bottom-20 left-4 right-4 glass-card rounded-2xl p-3 z-30 flex items-center space-x-2.5 shadow-xl">
-          <div id="bannerCheck" class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black text-xs shrink-0">
-            ✔️
+          <div id="bannerCheck" class="w-7 h-7 rounded-full bg-gray-700 text-white flex items-center justify-center font-black text-xs shrink-0">
+            🔍
           </div>
           <div class="flex-1">
-            <div id="bannerTitle" class="text-xs font-black text-white">이 상품을 추천해요!</div>
-            <div id="bannerSub" class="text-[9px] text-gray-300">품질과 가성비가 가장 우수한 상품입니다.</div>
+            <div id="bannerTitle" class="text-xs font-black text-white">매대 상품을 비춰주세요</div>
+            <div id="bannerSub" class="text-[9px] text-gray-300">상품 포착 시 실시간으로 최적의 가성비를 계산합니다.</div>
           </div>
           <span class="text-gray-400 text-sm font-bold">›</span>
         </div>
 
-        <!-- ── 10. 하단 스마트 탭바 ── -->
+        <!-- ── 11. 하단 스마트 탭바 ── -->
         <div class="absolute bottom-0 left-0 right-0 h-16 bg-gray-950/90 backdrop-blur-md border-t border-white/10 z-30 flex justify-around items-center px-4 pb-2 text-[10px]">
           <div class="flex flex-col items-center text-emerald-400 font-bold cursor-pointer">
             <span class="text-base">🏠</span>
@@ -277,7 +319,7 @@
   </section>
 
   <!-- ============================================================== -->
-  <!-- 랩 인스펙터 (광학 보정 및 마스크 심층 연구용) -->
+  <!-- 랩 인스펙터 (연구용 모드) -->
   <!-- ============================================================== -->
   <section id="labInspectorView" class="hidden max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
     <div class="lg:col-span-12 flex justify-between items-center bg-gray-900 p-4 rounded-xl border border-gray-800">
@@ -291,17 +333,32 @@
     </div>
   </section>
 
-  <!-- ── 전 품목 적응형 실시간 비전 엔진 스크립트 ── -->
+  <!-- ── 실시간 상태 머신 및 비전 연산 스크립트 ── -->
   <script>
-    // ── 전 품목 도메인 데이터 프리셋 ──
-    const CATEGORY_PROFILES = {
-      meat_pork: {
-        title: "🥩 삼겹살 분석 모드",
-        hint: "팩 내부 살코기:지방 면적 비율, 뭉친 떡지방, 100g당 실질 단가를 실시간 분석합니다.",
-        primaryLabel: "살코기 70% (지방 30%)",
+    // ── 상태 정의 (SEARCHING | LOCKED) ──
+    let arState = 'SEARCHING'; 
+    let activeSource = 'camera';
+    let currentFacingMode = 'environment'; // 'environment' (후면) | 'user' (전면)
+    let videoStream = null;
+    let isPriceLocked = false;
+    let activeVirtualSample = null;
+
+    let targetPos = { x: 195, y: 390, r: 70 };
+    let smoothPos = { x: 195, y: 390, r: 70 };
+    const EMA_ALPHA = 0.28;
+
+    let dwellStart = null;
+    let trayItems = [];
+
+    // ── 도메인 데이터 정의 ──
+    const FOOD_PROFILES = {
+      pork_belly: {
+        name: "한돈 삼겹살 (구이용)",
+        category: "🥩 정육 분석",
+        primaryLabel: "살코기 70% : 지방 30%",
         primaryPct: 70,
         secondaryIcon: "🛡️",
-        secondaryText: "떡지방 없음 (양호)",
+        secondaryText: "떡지방 없음 (황금비율)",
         priceMain: "표기 2,680원",
         priceSub: "실질 살코기 단가 3,828원/100g",
         badgeText: "실질 가성비 1위",
@@ -311,37 +368,37 @@
         metric1: "살코기 비율 70% (황금비율)",
         metric2: "실질단가 100g당 3,828원",
         metric3: "선홍색 육색 (신선도 최상)",
-        recommendTitle: "1번 삼겹살 팩을 추천해요!",
+        recommendTitle: "이 삼겹살 팩을 추천해요!",
         recommendSub: "비계 비율이 적고 순수 살코기 기준 가성비가 가장 우수합니다.",
-        thumb: "/sample_data/real_pork_belly_pack_01.jpg"
+        imgSrc: "/sample_data/real_pork_belly_pack_01.jpg"
       },
-      meat_beef: {
-        title: "🥩 한우 등심 분석 모드",
-        hint: "근내 지방도(BMS No.1~9)와 마블링 미세 입자 분포도를 정밀 측정합니다.",
-        primaryLabel: "마블링 BMS No.7 (1++ 등급)",
-        primaryPct: 88,
-        secondaryIcon: "🥩",
-        secondaryText: "섬세한 근내지방 분포",
-        priceMain: "100g당 11,800원",
-        priceSub: "회원 할인가 적용 완료",
-        badgeText: "마블링 극상",
-        badgeIcon: "✨",
-        score: 95,
-        crown: "극상 마블링!",
-        metric1: "BMS No.7 최상급 마블링",
-        metric2: "할인가 100g당 11,800원",
-        metric3: "육즙 및 숙성도 양호",
-        recommendTitle: "이 한우 등심을 추천해요!",
-        recommendSub: "지방 입자가 고르게 퍼져 부드러운 육질이 기대됩니다.",
-        thumb: "/sample_data/real_beef_steak_02.jpg"
+      pork_fatty: {
+        name: "삼겹살 (비계 과다)",
+        category: "🥩 정육 분석",
+        primaryLabel: "살코기 55% : 지방 45%",
+        primaryPct: 55,
+        secondaryIcon: "⚠️",
+        secondaryText: "하단 떡지방 과다 감지",
+        priceMain: "할인가 2,480원",
+        priceSub: "실질 살코기 단가 4,509원/100g",
+        badgeText: "비계 과다 주의",
+        badgeIcon: "⚠️",
+        score: 68,
+        crown: "비계 주의",
+        metric1: "비계 면적 45% (과다)",
+        metric2: "실질단가 100g당 4,509원 (비쌈)",
+        metric3: "하단 버려지는 부위 많음",
+        recommendTitle: "다른 팩을 추천해요",
+        recommendSub: "표기는 200원 저렴하지만 비계가 많아 실질 살코기는 17% 더 비쌉니다.",
+        imgSrc: "/sample_data/real_pork_fatty_03.jpg"
       },
-      fruit_apple: {
-        title: "🍎 사과/과일 분석 모드",
-        hint: "표면 색택, 멍/상처 결함 유무, 꼭지 녹색도 및 당도 추정치를 분석합니다.",
+      apple_red: {
+        name: "부사 꿀사과 (특)",
+        category: "🍎 과일 분석",
         primaryLabel: "신선도 95%",
         primaryPct: 95,
         secondaryIcon: "⚖️",
-        secondaryText: "크기 적당 (약 200g)",
+        secondaryText: "크기 적당 (약 200g / 중과)",
         priceMain: "가격 1,500원",
         priceSub: "(100g당 750원)",
         badgeText: "가성비 우수",
@@ -352,16 +409,16 @@
         metric2: "추정 당도 14.2 Brix",
         metric3: "꼭지 탈수 없음 (수확 2일차)",
         recommendTitle: "이 사과를 추천해요!",
-        recommendSub: "신선도와 가격이 모두 뛰어난 상품입니다.",
-        thumb: "/sample_data/real_apple_fresh_01.jpg"
+        recommendSub: "신선도와 가격이 모두 뛰어난 최상급 상품입니다.",
+        imgSrc: "/sample_data/real_apple_fresh_01.jpg"
       },
-      fruit_watermelon: {
-        title: "🍉 수박 분석 모드",
-        hint: "가보 필터 기반 줄무늬 선명도, 배꼽 크기 및 노란 밭자리 완숙도를 분석합니다.",
+      watermelon: {
+        name: "당도선별 수박 (8kg)",
+        category: "🍉 대형 과채",
         primaryLabel: "줄무늬 선명도 89점",
         primaryPct: 89,
         secondaryIcon: "🎯",
-        secondaryText: "배꼽 직경 0.7cm (작을수록 좋음)",
+        secondaryText: "배꼽 직경 0.7cm (완숙 소형)",
         priceMain: "1통 22,500원",
         priceSub: "KAMIS 시세 대비 -12%",
         badgeText: "고당도 완숙",
@@ -370,15 +427,15 @@
         crown: "고당도 수박!",
         metric1: "줄무늬 대비 89점 (규칙적)",
         metric2: "배꼽 소형화 완료 (당도 집중)",
-        metric3: "노란 밭자리 완숙 (풍부한 일조량)",
+        metric3: "노란 밭자리 완숙",
         recommendTitle: "이 수박을 추천해요!",
         recommendSub: "줄무늬가 선명하고 배꼽이 작아 당도가 보장됩니다.",
-        thumb: "/sample_data/real_watermelon_ripe_01.jpg"
+        imgSrc: "/sample_data/real_watermelon_ripe_01.jpg"
       },
-      veg_spinach: {
-        title: "🥬 잎채소/시금치 분석 모드",
-        hint: "Green Leaf Index (GLI) 엽록소 분광 분석 및 잎 끝 짓무름, 비닐 결로를 감지합니다.",
-        primaryLabel: "GLI 분광 지수 0.86 (신선)",
+      spinach: {
+        name: "친환경 노지 시금치",
+        category: "🥬 잎채소 분석",
+        primaryLabel: "GLI 분광 지수 0.86 (초신선)",
         primaryPct: 92,
         secondaryIcon: "💧",
         secondaryText: "포장 내 결로 없음",
@@ -393,94 +450,53 @@
         metric3: "수분 보존 상태 양호",
         recommendTitle: "이 시금치를 추천해요!",
         recommendSub: "누렇게 뜬 잎이 전혀 없고 생생하게 살아있는 최상급 채소입니다.",
-        thumb: "/sample_data/real_spinach_leaf_01.jpg"
+        imgSrc: "/sample_data/real_spinach_leaf_01.jpg"
       }
     };
 
-    let currentCategory = 'auto'; // 'auto' or specific category key
-    let detectedCategory = 'fruit_apple';
-    let activeSource = 'camera';
-    let isPriceLocked = false;
-    let videoStream = null;
-
-    let targetPos = { x: 195, y: 390, r: 75 };
-    let smoothPos = { x: 195, y: 390, r: 75 };
-    const EMA_ALPHA = 0.28;
-
-    let dwellStart = null;
-    let trayItems = [];
-
-    // ── 1. 품목 전환 핸들러 ──
-    function changeCategory(catKey) {
-      currentCategory = catKey;
-
-      // 상단 버튼 스타일 갱신
-      ['auto', 'meat_pork', 'meat_beef', 'fruit_apple', 'fruit_watermelon', 'veg_spinach'].forEach(k => {
-        const btn = document.getElementById(`catBtn_${k}`);
-        if (k === catKey) {
-          btn.className = 'px-2.5 py-1 rounded-lg font-bold bg-emerald-600 text-white shadow border border-emerald-500/40';
-        } else {
-          btn.className = 'px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white bg-gray-800/80 border border-gray-700';
-        }
-      });
-
-      if (catKey !== 'auto') {
-        applyCategoryProfile(catKey);
-      } else {
-        document.getElementById('activeEngineLabel').innerText = "AI 실시간 전 품목 자동 감지 중";
-      }
-    }
-
-    function applyCategoryProfile(key) {
-      detectedCategory = key;
-      const p = CATEGORY_PROFILES[key];
-      if (!p) return;
-
-      document.getElementById('hudCategoryBadge').innerText = p.title;
-      document.getElementById('activeCategoryHint').innerText = p.hint;
-
-      // 점수 및 배지
-      document.getElementById('targetScore').innerText = `${p.score}점`;
-      document.getElementById('targetBadgeText').innerText = p.crown;
-
-      // 우측 HUD 지표 갱신
-      document.getElementById('cardPrimaryLabel').innerText = p.primaryLabel;
-      document.getElementById('cardPrimaryBar').style.width = `${p.primaryPct}%`;
-      document.getElementById('cardSecondaryIcon').innerText = p.secondaryIcon;
-      document.getElementById('cardSecondaryText').innerText = p.secondaryText;
-      document.getElementById('cardPriceMain').innerText = p.priceMain;
-      document.getElementById('cardPriceSub').innerText = p.priceSub;
-      document.getElementById('cardValueBadgeText').innerText = p.badgeText;
-      document.getElementById('cardValueBadgeIcon').innerText = p.badgeIcon;
-
-      // 좌측 상태 갱신
-      document.getElementById('metric1Text').innerText = p.metric1;
-      document.getElementById('metric2Text').innerText = p.metric2;
-      document.getElementById('metric3Text').innerText = p.metric3;
-
-      // 하단 추천 배너
-      document.getElementById('bannerTitle').innerText = p.recommendTitle;
-      document.getElementById('bannerSub').innerText = p.recommendSub;
-      document.getElementById('altRecommendThumb').src = p.thumb;
-    }
-
-    // ── 2. 카메라 스트림 ──
-    async function startCamera() {
+    // ── 1. 카메라 시작 및 후면/전면 전환 ──
+    async function startCamera(facing = 'environment') {
+      currentFacingMode = facing;
       const video = document.getElementById('liveVideo');
+
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
+      }
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        const constraints = {
+          video: {
+            facingMode: facing,
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          },
           audio: false
-        });
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         videoStream = stream;
         video.srcObject = stream;
         video.classList.remove('hidden');
         document.getElementById('liveSimCanvas').classList.add('hidden');
         activeSource = 'camera';
       } catch (err) {
-        console.warn('카메라 접근 불가 — 시뮬레이션 모드로 전환:', err);
-        setSource('simulation');
+        console.warn(`카메라(${facing}) 시작 불가 — 기본값 시도 또는 시뮬레이션 전환:`, err);
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          videoStream = fallbackStream;
+          video.srcObject = fallbackStream;
+          video.classList.remove('hidden');
+          document.getElementById('liveSimCanvas').classList.add('hidden');
+          activeSource = 'camera';
+        } catch (e2) {
+          setSource('simulation');
+        }
       }
+    }
+
+    function toggleCameraFacing() {
+      const nextFacing = (currentFacingMode === 'environment') ? 'user' : 'environment';
+      startCamera(nextFacing);
     }
 
     function setSource(src) {
@@ -493,7 +509,7 @@
       if (src === 'camera') {
         btnCam.className = 'px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5 bg-emerald-600 text-white shadow';
         btnSim.className = 'px-3 py-1.5 rounded-lg font-bold text-gray-400 hover:text-gray-200 transition flex items-center space-x-1.5';
-        startCamera();
+        startCamera(currentFacingMode);
       } else {
         btnSim.className = 'px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5 bg-emerald-600 text-white shadow';
         btnCam.className = 'px-3 py-1.5 rounded-lg font-bold text-gray-400 hover:text-gray-200 transition flex items-center space-x-1.5';
@@ -506,7 +522,144 @@
       }
     }
 
-    // ── 3. 실시간 다품종 비전 연산 루프 (30fps) ──
+    // ── 2. 가상 식재료 팔레트 주입 (책상/웹캠 테스트용) ──
+    function injectVirtualSample(sampleKey) {
+      activeVirtualSample = FOOD_PROFILES[sampleKey];
+      const img = document.getElementById('virtualProduceImg');
+      img.src = activeVirtualSample.imgSrc;
+      img.classList.remove('hidden');
+      img.style.top = '270px';
+      img.style.left = '95px';
+
+      // 강제 LOCKED 상태 전환
+      transitionToState('LOCKED', activeVirtualSample);
+    }
+
+    function clearVirtualSample() {
+      activeVirtualSample = null;
+      document.getElementById('virtualProduceImg').classList.add('hidden');
+      transitionToState('SEARCHING');
+    }
+
+    // ── 3. 상태 머신 전환 (SEARCHING ↔ LOCKED) ──
+    function transitionToState(newState, profileData = null) {
+      arState = newState;
+
+      const badgeGroup = document.getElementById('targetBadgeContainer');
+      const reticleRing = document.getElementById('targetReticleRing');
+      const scanLine = document.getElementById('scanLine');
+      const corners = reticleRing.querySelectorAll('.reticle-corner');
+      const reticleDot = document.getElementById('reticleDot');
+      const searchingPrompt = document.getElementById('searchingPrompt');
+      const systemStatus = document.getElementById('systemStatusPill');
+
+      const hudStandby = document.getElementById('hudStandbyContent');
+      const hudActive = document.getElementById('hudActiveContent');
+      const leftBottomCard = document.getElementById('leftBottomCard');
+
+      if (newState === 'SEARCHING') {
+        // [탐색 모드] 점수 및 배지 완전 숨김
+        badgeGroup.classList.add('hidden');
+        searchingPrompt.classList.remove('hidden');
+        scanLine.classList.remove('hidden');
+
+        // 링 스타일: 회색 점선
+        reticleRing.className = 'relative w-[140px] h-[140px] rounded-full border-2 border-dashed border-gray-400/60 flex items-center justify-center transition-all duration-300';
+        corners.forEach(c => c.style.borderColor = '#9ca3af');
+        reticleDot.style.backgroundColor = '#9ca3af';
+
+        systemStatus.innerText = '● 식재료 탐색 중...';
+        systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700 rounded-full';
+
+        document.getElementById('engineStateIcon').innerText = '🔍';
+        document.getElementById('engineStateTitle').innerText = '식재료를 화면 중앙에 비춰주세요';
+        document.getElementById('engineStateDesc').innerHTML = '사람 얼굴이나 빈 방에서는 점수가 뜨지 않으며, <span class="text-emerald-300 font-bold">실제 과일·정육·채소</span>를 비춰야 인식됩니다.';
+
+        // 우측 HUD: 대기 화면
+        hudStandby.classList.remove('hidden');
+        hudActive.classList.add('hidden');
+        leftBottomCard.classList.add('hidden');
+
+        // 좌측 카드: 대기 상태
+        document.getElementById('hudCategoryBadge').innerText = '식재료 탐색 중...';
+        document.getElementById('hudCategoryBadge').className = 'text-[11px] font-black text-gray-300';
+        document.getElementById('metric1Icon').innerText = '📷';
+        document.getElementById('metric1Text').innerText = '카메라 정상 작동 중';
+        document.getElementById('metric2Icon').innerText = '📐';
+        document.getElementById('metric2Text').innerText = '선명도: 양호';
+        document.getElementById('metric3Icon').innerText = '💡';
+        document.getElementById('metric3Text').innerText = '조명 상태: 적정';
+
+        // 하단 배너: 대기 문구
+        document.getElementById('bannerCheck').innerText = '🔍';
+        document.getElementById('bannerCheck').className = 'w-7 h-7 rounded-full bg-gray-700 text-white flex items-center justify-center font-black text-xs shrink-0';
+        document.getElementById('bannerTitle').innerText = '매대 상품을 비춰주세요';
+        document.getElementById('bannerSub').innerText = '상품 포착 시 실시간으로 최적의 가성비를 계산합니다.';
+
+      } else if (newState === 'LOCKED' && profileData) {
+        // [포착 완료 모드] 점수 및 플로팅 배지 활성화!
+        badgeGroup.classList.remove('hidden');
+        searchingPrompt.classList.add('hidden');
+        scanLine.classList.add('hidden');
+
+        // 링 스타일: 녹색 실선 + 펄스
+        reticleRing.className = 'relative w-[140px] h-[140px] rounded-full border-2 border-emerald-400/90 border-dashed animate-pulse-ring flex items-center justify-center transition-all duration-300';
+        corners.forEach(c => c.style.borderColor = '#4ade80');
+        reticleDot.style.backgroundColor = '#4ade80';
+
+        systemStatus.innerText = '● 식재료 분석 완료';
+        systemStatus.className = 'px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full animate-pulse';
+
+        document.getElementById('engineStateIcon').innerText = '🎯';
+        document.getElementById('engineStateTitle').innerText = `${profileData.name} 감지 완료 (${profileData.score}점)`;
+        document.getElementById('engineStateDesc').innerHTML = `<span class="text-emerald-300 font-bold">${profileData.category}</span> 맞춤형 실시간 분석 지표를 오버레이 중입니다. 0.5초 유지 시 자동 스냅샷 저장!`;
+
+        // 점수 배지 업데이트
+        document.getElementById('targetScore').innerText = `${profileData.score}점`;
+        document.getElementById('targetBadgeText').innerText = profileData.crown;
+
+        if (profileData.score >= 90) {
+          document.getElementById('targetScore').className = 'bg-emerald-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+        } else if (profileData.score >= 75) {
+          document.getElementById('targetScore').className = 'bg-amber-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+        } else {
+          document.getElementById('targetScore').className = 'bg-red-500 text-white px-3.5 py-1 rounded-full text-base font-black border-2 border-white shadow-lg';
+        }
+
+        // 우측 HUD: 활성 콘텐츠 오픈 및 데이터 주입
+        hudStandby.classList.add('hidden');
+        hudActive.classList.remove('hidden');
+        leftBottomCard.classList.remove('hidden');
+
+        document.getElementById('cardPrimaryLabel').innerText = profileData.primaryLabel;
+        document.getElementById('cardPrimaryBar').style.width = `${profileData.primaryPct}%`;
+        document.getElementById('cardSecondaryIcon').innerText = profileData.secondaryIcon;
+        document.getElementById('cardSecondaryText').innerText = profileData.secondaryText;
+        document.getElementById('cardPriceMain').innerText = profileData.priceMain;
+        document.getElementById('cardPriceSub').innerText = profileData.priceSub;
+        document.getElementById('cardValueBadgeText').innerText = profileData.badgeText;
+        document.getElementById('cardValueBadgeIcon').innerText = profileData.badgeIcon;
+
+        // 좌측 카드 업데이트
+        document.getElementById('hudCategoryBadge').innerText = profileData.category;
+        document.getElementById('hudCategoryBadge').className = 'text-[11px] font-black text-emerald-300';
+        document.getElementById('metric1Icon').innerText = '🌿';
+        document.getElementById('metric1Text').innerText = profileData.metric1;
+        document.getElementById('metric2Icon').innerText = '⚖️';
+        document.getElementById('metric2Text').innerText = profileData.metric2;
+        document.getElementById('metric3Icon').innerText = '⭐';
+        document.getElementById('metric3Text').innerText = profileData.metric3;
+
+        // 하단 배너 업데이트
+        document.getElementById('bannerCheck').innerText = '✔️';
+        document.getElementById('bannerCheck').className = 'w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black text-xs shrink-0';
+        document.getElementById('bannerTitle').innerText = profileData.recommendTitle;
+        document.getElementById('bannerSub').innerText = profileData.recommendSub;
+        document.getElementById('altRecommendThumb').src = profileData.imgSrc;
+      }
+    }
+
+    // ── 4. 실시간 컴퓨터 비전 루프 (30fps) ──
     let lastTime = performance.now();
     let frameCount = 0;
 
@@ -519,13 +672,16 @@
         lastTime = now;
       }
 
-      if (activeSource === 'camera') {
-        processMultiFoodFrame();
+      if (activeVirtualSample) {
+        // 가상 샘플이 주입되어 있는 경우 고정 타겟
+        targetPos = { x: 195, y: 365, r: 75 };
+      } else if (activeSource === 'camera') {
+        processRealCameraFeed();
       } else {
-        renderMultiFoodSimulation();
+        renderSimulationCanvas();
       }
 
-      // 스무딩 보간
+      // 지수이동평균(EMA) 스무딩
       smoothPos.x += (targetPos.x - smoothPos.x) * EMA_ALPHA;
       smoothPos.y += (targetPos.y - smoothPos.y) * EMA_ALPHA;
       smoothPos.r += (targetPos.r - smoothPos.r) * EMA_ALPHA;
@@ -541,8 +697,8 @@
       requestAnimationFrame(visionProcessingLoop);
     }
 
-    // 카메라 실제 프레임에서 전 품목 스펙트럼 분석 및 자동 모드 전환
-    function processMultiFoodFrame() {
+    // 실제 카메라 영상에서 식재료 유무 판별 (얼굴/벽/키보드 배제)
+    function processRealCameraFeed() {
       const video = document.getElementById('liveVideo');
       if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
@@ -552,126 +708,103 @@
 
       const d = ctx.getImageData(0, 0, compCanvas.width, compCanvas.height).data;
 
-      let greenCount = 0, redCount = 0, whitePorkCount = 0;
-      let sumX = 0, sumY = 0, totalHits = 0;
+      // 중앙 60% ROI만 분석
+      const roiX1 = Math.floor(compCanvas.width * 0.2);
+      const roiX2 = Math.floor(compCanvas.width * 0.8);
+      const roiY1 = Math.floor(compCanvas.height * 0.2);
+      const roiY2 = Math.floor(compCanvas.height * 0.8);
 
-      for (let i = 0; i < d.length; i += 16) {
-        const r = d[i], g = d[i + 1], b = d[i + 2];
+      let greenLeafHits = 0;
+      let redFruitMeatHits = 0;
+      let totalPixelsChecked = 0;
+      let sumX = 0, sumY = 0;
 
-        // 1. 녹색 채소 픽셀
-        if (g > 80 && g > r * 1.25 && g > b * 1.25) {
-          greenCount++;
-          sumX += (i / 4) % compCanvas.width;
-          sumY += Math.floor((i / 4) / compCanvas.width);
-          totalHits++;
-        }
-        // 2. 붉은색 살코기/과일 픽셀
-        else if (r > 80 && r > g * 1.3 && r > b * 1.3) {
-          redCount++;
-          sumX += (i / 4) % compCanvas.width;
-          sumY += Math.floor((i / 4) / compCanvas.width);
-          totalHits++;
-        }
-        // 3. 삼겹살 지방 픽셀 (흰색/연회색)
-        else if (r > 160 && g > 160 && b > 160 && Math.abs(r - g) < 20) {
-          whitePorkCount++;
+      for (let y = roiY1; y < roiY2; y += 4) {
+        for (let x = roiX1; x < roiX2; x += 4) {
+          totalPixelsChecked++;
+          const idx = (y * compCanvas.width + x) * 4;
+          const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+
+          // 1. 녹색 채소 판별 (G 채널 우세 및 채도 확보)
+          if (g > 70 && g > r * 1.35 && g > b * 1.35) {
+            greenLeafHits++;
+            sumX += x;
+            sumY += y;
+          }
+          // 2. 붉은색 과일/살코기 판별 (사람 피부톤 배제: 피부톤은 R이 높지만 G와 차이가 적고 B도 일정함)
+          // 순수 살코기/붉은 과일은 R 채널이 G 채널의 1.6배 이상
+          else if (r > 90 && r > g * 1.6 && r > b * 1.6) {
+            redFruitMeatHits++;
+            sumX += x;
+            sumY += y;
+          }
         }
       }
 
-      // 위치 트래킹
-      if (totalHits > 20) {
+      const totalHits = greenLeafHits + redFruitMeatHits;
+      const hitRatio = totalHits / Math.max(totalPixelsChecked, 1);
+
+      // 전체 중앙 영역의 4% 이상 뚜렷한 식재료 색상이 포착된 경우에만 활성화
+      if (hitRatio > 0.04) {
         const cx = (sumX / totalHits) * (390 / compCanvas.width);
         const cy = (sumY / totalHits) * (780 / compCanvas.height);
         targetPos = { x: cx, y: cy, r: 75 };
-      }
 
-      // 자동 감지 모드인 경우 품목 자동 분류 적용
-      if (currentCategory === 'auto' && totalHits > 30) {
-        if (greenCount > redCount * 1.5) {
-          if (detectedCategory !== 'veg_spinach') applyCategoryProfile('veg_spinach');
-        } else if (redCount > 0 && whitePorkCount > 15) {
-          if (detectedCategory !== 'meat_pork') applyCategoryProfile('meat_pork');
-        } else if (redCount > greenCount) {
-          if (detectedCategory !== 'fruit_apple') applyCategoryProfile('fruit_apple');
+        if (greenLeafHits > redFruitMeatHits) {
+          transitionToState('LOCKED', FOOD_PROFILES.spinach);
+        } else {
+          transitionToState('LOCKED', FOOD_PROFILES.apple_red);
         }
+      } else {
+        // 식재료가 없음 (얼굴, 빈 방 등) -> 탐색 모드로 전환하고 점수 배지 숨김!
+        targetPos = { x: 195, y: 390, r: 70 };
+        transitionToState('SEARCHING');
       }
     }
 
-    // 마트 전 품목 시뮬레이션 매대 렌더링
-    function renderMultiFoodSimulation() {
+    // 시뮬레이션 매대 렌더링
+    function renderSimulationCanvas() {
       const c = document.getElementById('liveSimCanvas');
       const ctx = c.getContext('2d');
 
-      ctx.fillStyle = '#0b1120';
+      ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, c.width, c.height);
 
-      // 매대 선반
       ctx.fillStyle = '#1e293b';
-      ctx.fillRect(15, 200, 360, 480);
+      ctx.fillRect(20, 200, 350, 480);
       ctx.strokeStyle = '#334155';
-      ctx.strokeRect(15, 200, 360, 480);
+      ctx.strokeRect(20, 200, 350, 480);
 
-      const p = CATEGORY_PROFILES[detectedCategory];
+      // 시뮬레이션 사과 그리기
+      const grad = ctx.createRadialGradient(180, 370, 10, 195, 390, 70);
+      grad.addColorStop(0, '#fca5a5');
+      grad.addColorStop(0.5, '#dc2626');
+      grad.addColorStop(1, '#881337');
+      ctx.beginPath();
+      ctx.arc(195, 390, 70, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
 
-      // 대표 물체 그리기
-      ctx.save();
-      if (detectedCategory.includes('meat')) {
-        // 정육 팩 그리기
-        ctx.fillStyle = '#450a0a';
-        ctx.fillRect(100, 280, 190, 220);
-        ctx.fillStyle = '#e2e8f0'; // 비계 줄
-        ctx.fillRect(110, 310, 170, 35);
-        ctx.fillRect(110, 390, 170, 25);
-        // 흰색 가격표 라벨 부착
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(210, 290, 70, 40);
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 9px sans-serif';
-        ctx.fillText('100g 2,680원', 215, 312);
-      } else if (detectedCategory === 'fruit_watermelon') {
-        // 수박 줄무늬 그리기
-        ctx.beginPath();
-        ctx.arc(195, 390, 85, 0, Math.PI * 2);
-        ctx.fillStyle = '#166534';
-        ctx.fill();
-        ctx.strokeStyle = '#052e16';
-        ctx.lineWidth = 14;
-        for (let a = 0; a < Math.PI * 2; a += 0.8) {
-          ctx.beginPath();
-          ctx.arc(195, 390, 85, a, a + 0.35);
-          ctx.stroke();
-        }
-      } else if (detectedCategory === 'veg_spinach') {
-        // 녹색 잎채소 묶음 그리기
-        ctx.fillStyle = '#15803d';
-        for (let i = 0; i < 7; i++) {
-          ctx.beginPath();
-          ctx.ellipse(195 + (i - 3) * 18, 390 + (i % 2) * 15, 30, 60, (i - 3) * 0.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        // 사과 과일 그리기
-        const grad = ctx.createRadialGradient(180, 370, 10, 195, 390, 70);
-        grad.addColorStop(0, '#fca5a5');
-        grad.addColorStop(0.5, '#dc2626');
-        grad.addColorStop(1, '#881337');
-        ctx.beginPath();
-        ctx.arc(195, 390, 70, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
+      // 시뮬레이션 모드에서는 사과가 존재하므로 LOCKED 상태 적용
+      targetPos = { x: 195, y: 390, r: 75 };
+      if (arState !== 'LOCKED') {
+        transitionToState('LOCKED', FOOD_PROFILES.apple_red);
       }
-      ctx.restore();
-
-      targetPos = { x: 195, y: 390, r: 80 };
     }
 
-    // ── 4. 자동 스냅샷 트레이 ──
+    // ── 5. 0.5초 머무름 자동 스냅샷 (Dwell Engine) ──
     function checkDwellAndSnapshot() {
+      if (arState !== 'LOCKED') {
+        dwellStart = null;
+        return;
+      }
+
       const now = performance.now();
       if (!dwellStart) {
         dwellStart = now;
         return;
       }
+
       if (now - dwellStart > 500) {
         dwellStart = now + 4000;
         takeAutoSnapshot();
@@ -681,12 +814,12 @@
     function takeAutoSnapshot() {
       if (trayItems.length >= 3) return;
       const curScore = parseInt(document.getElementById('targetScore').innerText);
-      const p = CATEGORY_PROFILES[detectedCategory];
+      const curThumb = document.getElementById('altRecommendThumb').src;
 
       trayItems.push({
         id: `snap_${Date.now()}`,
         score: curScore,
-        thumb: p.thumb,
+        thumb: curThumb,
       });
       renderTray();
     }
@@ -721,7 +854,7 @@
       badge.classList.remove('hidden');
       badge.classList.add('animate-bounce');
       setTimeout(() => badge.classList.remove('animate-bounce'), 1000);
-      alert('🔒 [POP 가격표 락 완료]\n매대 가격이 고정되어 실시간 단위 가성비가 산출됩니다.');
+      alert('🔒 [POP 가격표 락 완료]\n매대 가격(1,500원)이 고정되었습니다.');
     }
 
     function switchTab() {
@@ -741,10 +874,9 @@
     }
 
     window.onload = () => {
-      applyCategoryProfile('fruit_apple');
-      trayItems = [{ id: 'init', score: 92, thumb: '/sample_data/real_apple_fresh_01.jpg' }];
-      renderTray();
-      startCamera();
+      // 초기 상태는 탐색 대기(SEARCHING)
+      transitionToState('SEARCHING');
+      startCamera('environment');
       requestAnimationFrame(visionProcessingLoop);
     };
   </script>
