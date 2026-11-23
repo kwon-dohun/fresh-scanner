@@ -156,10 +156,14 @@ class OCRService:
                 self._engine_name = "easyocr"
 
         if self._engine_name == "easyocr":
-            import easyocr  # type: ignore[import-untyped]
+            try:
+                import easyocr  # type: ignore[import-untyped]
 
-            self._engine = easyocr.Reader(["ko", "en"], gpu=False)
-            logger.info("EasyOCR 엔진 로드 완료")
+                self._engine = easyocr.Reader(["ko", "en"], gpu=False)
+                logger.info("EasyOCR 엔진 로드 완료")
+            except Exception as e:
+                logger.warning("EasyOCR 로드 불가 — 모바일 온디바이스 OCR/정규식 폴백 모드로 동작: %s", e)
+                self._engine = None
 
     # -- Core OCR -----------------------------------------------------------
 
@@ -178,6 +182,9 @@ class OCRService:
             OCRResult 리스트 (confidence 내림차순).
         """
         self._load_engine()
+
+        if self._engine is None:
+            return []
 
         if region is not None:
             x1, y1, x2, y2 = region
@@ -338,3 +345,59 @@ class OCRService:
             receipt.total = sum(i.total_price for i in receipt.items)
 
         return receipt
+
+
+class KoreanMartLabelParser:
+    """한국 주요 마트 3사(이마트·홈플러스·롯데마트) 정육 라벨 텍스트 파서."""
+
+    @staticmethod
+    def parse_label_lines(lines: list[str]) -> tuple[int | None, float | None, int | None]:
+        """OCR 추출 텍스트 라인 리스트에서 (100g당 단가, 중량g, 최종결제금액) 추출.
+
+        할인가/회원가와 정상가가 동시에 기재된 경우 실결제 단가(할인가)를 최우선으로 채택합니다.
+        """
+        full_text = " ".join(lines)
+        price_per_100g = None
+        weight = None
+        total_price = None
+
+        # 1. 할인가 우선 패턴 매칭
+        # e.g. "신세계포인트 적립시 100g당 8,800원", "할인가 100g당 8,800원"
+        discount_m = re.findall(
+            r"(?:할인|적립|회원|행사).*?100\s*g\s*(?:당|/)\s*[:\s]*([0-9,]+)\s*원",
+            full_text,
+            re.IGNORECASE,
+        )
+        if discount_m:
+            price_per_100g = _parse_int(discount_m[-1])
+        else:
+            m = _RE_PRICE_PER_100G.search(full_text)
+            if m:
+                price_per_100g = _parse_int(m.group(1))
+
+        # 2. 중량 파싱 (예: "중량: 450g", "등심 300g", "0.524kg")
+        m_w = re.search(r"(?:중량|내용량|정량)\s*[:\s]*([0-9,.]+)\s*(g|kg|그램|킬로)", full_text, re.IGNORECASE)
+        if not m_w:
+            # 100g당 제외하고 단독으로 붙은 중량 탐색 (예: 등심 300g)
+            m_w = re.search(r"(?<!100)\s*([0-9,.]+)\s*(g|kg|그램|킬로)(?!\s*당)", full_text, re.IGNORECASE)
+        if m_w:
+            w_val = _parse_float(m_w.group(1))
+            unit = m_w.group(2).lower()
+            if w_val is not None:
+                weight = w_val * 1000.0 if unit in ("kg", "킬로") else w_val
+
+        # 3. 총 결제 예정 금액 파싱
+        total_m = re.findall(
+            r"(?:결제|판매|소비자|최종).*?(?:금액|가).*?[:\s]*([0-9,]+)\s*원",
+            full_text,
+            re.IGNORECASE,
+        )
+        if total_m:
+            total_price = _parse_int(total_m[-1])
+        else:
+            m_p = _RE_TOTAL_PRICE.search(full_text)
+            if m_p:
+                total_price = _parse_int(m_p.group(1))
+
+        return price_per_100g, weight, total_price
+
