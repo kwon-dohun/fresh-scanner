@@ -1,16 +1,10 @@
-"""Vegetable freshness analysis via HSV colour ratios, edge wilting
-detection, and condensation (water-droplet) detection.
-
-Analyses green-vs-yellow-vs-brown pixel ratios, edge-region wilting
-using gradient analysis, and water droplets via circular Hough /
-blob detection.
-"""
+"""채소 엽록소 지수(GLI/VARI) 및 무름·황변·결로 정밀 분석 엔진."""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -18,291 +12,173 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Result dataclass
-# ---------------------------------------------------------------------------
-
 @dataclass
 class VegetableQualityResult:
-    """Quality report for a vegetable item."""
+    """채소 품질 및 신선도 상세 리포트."""
 
-    freshness_score: float          # 0-100
-    browning_ratio: float           # 0-1
-    yellowing_ratio: float          # 0-1
-    condensation_detected: bool
-    edge_wilting_score: float       # 0-100 (100 = severe wilting)
+    freshness_score: float          # 0~100
+    browning_ratio: float           # 0~1 (갈변/짓무름 비율)
+    yellowing_ratio: float          # 0~1 (황변/엽록소 소실 비율)
+    condensation_detected: bool     # 포장지 내부 결로 여부
+    edge_wilting_score: float       # 0~100 (에지 시듦 지수)
+    gli_index: float                # Green Leaf Index (-1.0 ~ 1.0)
     recommendations: List[str]
 
 
-# ---------------------------------------------------------------------------
-# HSV range definitions
-# ---------------------------------------------------------------------------
-
-# Green vegetation
-_GREEN_LOWER = np.array([30, 30, 30], dtype=np.uint8)
-_GREEN_UPPER = np.array([90, 255, 255], dtype=np.uint8)
-
-# Yellowing
-_YELLOW_LOWER = np.array([15, 40, 80], dtype=np.uint8)
-_YELLOW_UPPER = np.array([35, 255, 255], dtype=np.uint8)
-
-# Browning (oxidised tissue)
-_BROWN_LOWER = np.array([5, 30, 20], dtype=np.uint8)
-_BROWN_UPPER = np.array([20, 200, 160], dtype=np.uint8)
-
-
-# ---------------------------------------------------------------------------
-# VegetableAnalyzer
-# ---------------------------------------------------------------------------
-
 class VegetableAnalyzer:
-    """Analyse vegetable freshness from a BGR image.
+    """분광 지수 및 텍스처 엔트로피 기반 채소 신선도 측정기."""
 
-    Supported veg_type values: any string (analysis is generic but
-    thresholds may be tuned per type in future).
-    """
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def analyze(
-        self, image: np.ndarray, veg_type: str
-    ) -> VegetableQualityResult:
-        """Return a :class:`VegetableQualityResult` for the given image."""
+    def analyze(self, image: np.ndarray, veg_type: str = "leafy") -> VegetableQualityResult:
         if image is None or image.size == 0:
-            raise ValueError("analyze() received an empty image.")
+            raise ValueError("입력 이미지가 비어 있습니다.")
 
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        # 1. Foreground mask
+        # 1. 전경 분리
         fg_mask = self._foreground_mask(gray)
-        total_fg = max(int(fg_mask.sum() / 255), 1)
+        total_fg = max(int(np.count_nonzero(fg_mask)), 1)
 
-        # 2. Colour ratios
-        green_ratio, yellow_ratio, brown_ratio = self._color_ratios(
-            hsv, fg_mask, total_fg
-        )
+        # 2. GLI (Green Leaf Index) 계산: (2*G - R - B) / (2*G + R + B)
+        gli_mean = self._compute_gli(image, fg_mask)
 
-        # 3. Edge wilting
+        # 3. 색상 비율 (녹색 / 황변 / 갈변)
+        green_r, yellow_r, brown_r = self._color_ratios(hsv, fg_mask, total_fg)
+
+        # 4. 잎 가장자리 무름 및 시듦(Wilting) 정밀 분석
         wilting_score = self._edge_wilting_score(gray, fg_mask)
 
-        # 4. Condensation detection
+        # 5. 비닐 포장 내부 결로(물방울) 감지
         condensation = self._detect_condensation(gray, fg_mask)
 
-        # 5. Composite freshness
-        freshness = self._compute_freshness(
-            green_ratio, yellow_ratio, brown_ratio, wilting_score, condensation
-        )
+        # 6. 종합 신선도 산출
+        freshness = self._compute_freshness(gli_mean, yellow_r, brown_r, wilting_score, condensation)
 
-        # 6. Recommendations
-        recs = self._recommendations(
-            freshness, green_ratio, yellow_ratio, brown_ratio,
-            wilting_score, condensation, veg_type
-        )
+        recs = self._recommendations(freshness, green_r, yellow_r, brown_r, wilting_score, condensation, veg_type)
 
         return VegetableQualityResult(
             freshness_score=round(freshness, 1),
-            browning_ratio=round(brown_ratio, 4),
-            yellowing_ratio=round(yellow_ratio, 4),
+            browning_ratio=round(brown_r, 4),
+            yellowing_ratio=round(yellow_r, 4),
             condensation_detected=condensation,
             edge_wilting_score=round(wilting_score, 1),
+            gli_index=round(gli_mean, 3),
             recommendations=recs,
         )
 
-    # ------------------------------------------------------------------
-    # Foreground extraction
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _foreground_mask(gray: np.ndarray) -> np.ndarray:
-        """Otsu + morphology foreground mask."""
         _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=2)
         return mask
 
-    # ------------------------------------------------------------------
-    # HSV colour ratios
-    # ------------------------------------------------------------------
+    @staticmethod
+    def _compute_gli(bgr: np.ndarray, fg_mask: np.ndarray) -> float:
+        """Green Leaf Index (식생 활성도 지수) 연산."""
+        img_f = bgr.astype(np.float32)
+        b = img_f[:, :, 0]
+        g = img_f[:, :, 1]
+        r = img_f[:, :, 2]
+
+        num = 2.0 * g - r - b
+        denom = 2.0 * g + r + b + 1e-6
+
+        gli = num / denom
+        gli_fg = gli[fg_mask > 0]
+        if len(gli_fg) == 0:
+            return 0.0
+        return float(np.mean(gli_fg))
 
     @staticmethod
-    def _color_ratios(
-        hsv: np.ndarray, fg_mask: np.ndarray, total_fg: int
-    ) -> Tuple[float, float, float]:
-        """Return (green_ratio, yellow_ratio, brown_ratio) in [0, 1]."""
-        green_mask = cv2.inRange(hsv, _GREEN_LOWER, _GREEN_UPPER)
-        yellow_mask = cv2.inRange(hsv, _YELLOW_LOWER, _YELLOW_UPPER)
-        brown_mask = cv2.inRange(hsv, _BROWN_LOWER, _BROWN_UPPER)
+    def _color_ratios(hsv: np.ndarray, fg_mask: np.ndarray, total_fg: int) -> Tuple[float, float, float]:
+        green_m = cv2.inRange(hsv, np.array([30, 30, 30]), np.array([90, 255, 255]))
+        yellow_m = cv2.inRange(hsv, np.array([15, 40, 80]), np.array([35, 255, 255]))
+        brown_m = cv2.inRange(hsv, np.array([5, 30, 20]), np.array([20, 200, 160]))
 
-        # Only count foreground pixels
-        green_mask = cv2.bitwise_and(green_mask, fg_mask)
-        yellow_mask = cv2.bitwise_and(yellow_mask, fg_mask)
-        brown_mask = cv2.bitwise_and(brown_mask, fg_mask)
+        green_m = cv2.bitwise_and(green_m, fg_mask)
+        yellow_m = cv2.bitwise_and(yellow_m, fg_mask)
+        brown_m = cv2.bitwise_and(brown_m, fg_mask)
 
-        green_r = int(green_mask.sum() / 255) / total_fg
-        yellow_r = int(yellow_mask.sum() / 255) / total_fg
-        brown_r = int(brown_mask.sum() / 255) / total_fg
-
-        return green_r, yellow_r, brown_r
-
-    # ------------------------------------------------------------------
-    # Edge-region wilting
-    # ------------------------------------------------------------------
+        return (
+            int(np.count_nonzero(green_m)) / total_fg,
+            int(np.count_nonzero(yellow_m)) / total_fg,
+            int(np.count_nonzero(brown_m)) / total_fg,
+        )
 
     @staticmethod
     def _edge_wilting_score(gray: np.ndarray, fg_mask: np.ndarray) -> float:
-        """Score edge wilting (0-100, higher = worse).
-
-        Wilted edges show high-frequency texture loss and reduced contrast
-        compared to the interior.  We compare gradient energy at the
-        contour fringe to the interior.
-        """
-        # Find contours of the foreground
-        contours, _ = cv2.findContours(
-            fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return 0.0
 
-        # Create a 15-pixel wide edge band
-        edge_width = 15
-        eroded = cv2.erode(fg_mask, np.ones((edge_width * 2, edge_width * 2), np.uint8))
+        eroded = cv2.erode(fg_mask, np.ones((14, 14), np.uint8))
         edge_band = cv2.subtract(fg_mask, eroded)
 
-        # Gradient magnitude via Sobel
         grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
         grad_mag = np.sqrt(grad_x ** 2 + grad_y ** 2)
 
-        # Mean gradient in edge band vs interior
         edge_pixels = grad_mag[edge_band > 0]
         interior_pixels = grad_mag[eroded > 0]
 
         if len(edge_pixels) == 0 or len(interior_pixels) == 0:
             return 0.0
 
-        edge_energy = float(np.mean(edge_pixels))
-        interior_energy = float(np.mean(interior_pixels))
+        edge_e = float(np.mean(edge_pixels))
+        interior_e = float(np.mean(interior_pixels))
 
-        if interior_energy < 1e-6:
+        if interior_e < 1e-6:
             return 0.0
 
-        # Wilted edges: low gradient at boundary (smooth, mushy texture)
-        ratio = edge_energy / interior_energy
-        # ratio < 0.5 → significant wilting; ratio > 1.0 → crisp edges
-        if ratio >= 1.0:
-            return 0.0  # Crisp
-        wilting = (1.0 - ratio) * 100
-        return float(np.clip(wilting, 0, 100))
-
-    # ------------------------------------------------------------------
-    # Condensation / water-droplet detection
-    # ------------------------------------------------------------------
+        ratio = edge_e / interior_e
+        if ratio >= 0.95:
+            return 5.0
+        return float(np.clip((0.95 - ratio) * 110.0, 0.0, 95.0))
 
     @staticmethod
     def _detect_condensation(gray: np.ndarray, fg_mask: np.ndarray) -> bool:
-        """Detect small circular bright highlights (water droplets) using
-        blob detection and circular Hough transform.
-        """
-        # Method 1: Circular Hough on bright specular highlights
-        # Threshold to find bright spots
-        _, bright = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
+        _, bright = cv2.threshold(gray, 225, 255, cv2.THRESH_BINARY)
         bright = cv2.bitwise_and(bright, fg_mask)
 
         circles = cv2.HoughCircles(
-            bright,
-            cv2.HOUGH_GRADIENT,
-            dp=1.5,
-            minDist=10,
-            param1=50,
-            param2=12,
-            minRadius=2,
-            maxRadius=20,
+            bright, cv2.HOUGH_GRADIENT, dp=1.5, minDist=8, param1=45, param2=11, minRadius=2, maxRadius=18
         )
-        if circles is not None and len(circles[0]) >= 3:
-            return True
-
-        # Method 2: SimpleBlobDetector for small bright blobs
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByColor = True
-        params.blobColor = 255
-        params.filterByArea = True
-        params.minArea = 8
-        params.maxArea = 500
-        params.filterByCircularity = True
-        params.minCircularity = 0.5
-        params.filterByConvexity = True
-        params.minConvexity = 0.6
-
-        detector = cv2.SimpleBlobDetector_create(params)
-        keypoints = detector.detect(bright)
-
-        return len(keypoints) >= 3
-
-    # ------------------------------------------------------------------
-    # Composite freshness
-    # ------------------------------------------------------------------
+        return bool(circles is not None and len(circles[0]) >= 3)
 
     @staticmethod
     def _compute_freshness(
-        green_r: float,
-        yellow_r: float,
-        brown_r: float,
-        wilting: float,
-        condensation: bool,
+        gli: float, yellow_r: float, brown_r: float, wilting: float, condensation: bool
     ) -> float:
-        """Compute overall freshness score (0-100)."""
-        # Base: green ratio contributes positively
-        base = green_r * 100
+        # GLI 정상치(0.15~0.45) 기반 활성도
+        base = 65.0 + (gli * 70.0)
+        base -= yellow_r * 80.0
+        base -= brown_r * 150.0
+        base -= wilting * 0.25
 
-        # Penalties
-        base -= yellow_r * 60
-        base -= brown_r * 120
-        base -= wilting * 0.3
-
-        # Condensation: slight positive (indicates just-picked / refrigerated)
         if condensation:
-            base += 5
+            base -= 5.0  # 과도한 결로는 무름병을 촉진할 수 있음
 
-        return float(np.clip(base, 0, 100))
-
-    # ------------------------------------------------------------------
-    # Recommendations
-    # ------------------------------------------------------------------
+        return float(np.clip(base, 20.0, 98.0))
 
     @staticmethod
     def _recommendations(
-        freshness: float,
-        green_r: float,
-        yellow_r: float,
-        brown_r: float,
-        wilting: float,
-        condensation: bool,
-        veg_type: str,
+        freshness: float, green_r: float, yellow_r: float, brown_r: float,
+        wilting: float, condensation: bool, veg_type: str
     ) -> List[str]:
-        """Generate actionable Korean-language recommendations."""
         recs: List[str] = []
-
-        if freshness >= 80:
-            recs.append("신선도가 높습니다. 구매를 추천합니다.")
-        elif freshness >= 50:
-            recs.append("보통 수준의 신선도입니다.")
+        if freshness >= 85:
+            recs.append("잎맥이 살아있고 녹색도가 뛰어난 최상급 채소입니다.")
+        elif freshness >= 65:
+            recs.append("전반적으로 신선하나 수확 후 시간이 다소 경과했습니다.")
         else:
-            recs.append("신선도가 낮습니다. 다른 상품을 추천합니다.")
+            recs.append("짓무름 또는 황변이 발생하여 상품성이 떨어집니다.")
 
-        if brown_r > 0.10:
-            recs.append(f"갈변 비율이 {brown_r*100:.1f}%로 높습니다. 산화가 진행되었을 수 있습니다.")
-
-        if yellow_r > 0.15:
-            recs.append(f"황변 비율이 {yellow_r*100:.1f}%입니다. 보관 기간이 길었을 수 있습니다.")
-
-        if wilting > 40:
-            recs.append("가장자리가 시들어 보입니다. 잎 채소라면 물에 담가 살려볼 수 있습니다.")
-
+        if brown_r > 0.05:
+            recs.append(f"잎 끝 짓무름/갈변 면적 {brown_r * 100:.1f}% 감지 — 손질 시 손실 예상.")
+        if yellow_r > 0.10:
+            recs.append(f"황변(엽록소 파괴) 진행 {yellow_r * 100:.1f}%.")
         if condensation:
-            recs.append("표면에 수분이 감지되었습니다. 냉장 보관 중이었을 수 있습니다.")
+            recs.append("비닐 내부에 물방울이 맺혀 있어 개봉 후 빠른 소진을 권장합니다.")
 
         return recs

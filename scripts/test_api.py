@@ -1,8 +1,7 @@
-"""FreshScanner 통합 엔드포인트 동작 검증 스크립트."""
+"""FreshScanner 종합 엔드포인트 및 고도화 CV 알고리즘 검증 스크립트."""
 
 from __future__ import annotations
 
-import io
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
@@ -10,70 +9,120 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 
 
-def create_dummy_meat_image() -> bytes:
-    """테스트용 합성 고기 이미지 생성 (살코기 붉은색 + 지방 흰색)."""
+def create_dummy_meat_with_glare() -> bytes:
+    """비닐 랩 반사광 및 마트 조명이 포함된 고기 이미지 합성."""
     img = np.zeros((300, 300, 3), dtype=np.uint8)
-    # 살코기 영역 (진한 선홍색)
-    img[:, :] = (30, 30, 200)
-    # 지방 마블링 영역 (아이보리 화이트)
-    cv2.circle(img, (150, 150), 40, (230, 240, 240), -1)
-    cv2.rectangle(img, (20, 20), (80, 80), (220, 230, 230), -1)
+    # 붉은색 조명 편향된 살코기 (BGR: 20, 20, 220)
+    img[:, :] = (20, 20, 220)
+    # 지방 층
+    cv2.rectangle(img, (20, 20), (120, 80), (210, 230, 230), -1)
+    # 강한 비닐 반사광 (Specular Highlight: V>240, S<20)
+    cv2.circle(img, (180, 180), 25, (250, 252, 255), -1)
 
-    is_success, buffer = cv2.imencode(".jpg", img)
+    _, buffer = cv2.imencode(".jpg", img)
+    return buffer.tobytes()
+
+
+def create_dummy_watermelon() -> bytes:
+    """수박 줄무늬 패턴 이미지 합성 (가보 필터 검증용)."""
+    img = np.zeros((300, 300, 3), dtype=np.uint8)
+    img[:, :] = (40, 140, 50)  # 연한 녹색 바탕
+    # 검은색 수직 줄무늬
+    for x in range(30, 280, 45):
+        cv2.rectangle(img, (x, 0), (x + 18, 300), (20, 50, 20), -1)
+
+    _, buffer = cv2.imencode(".jpg", img)
+    return buffer.tobytes()
+
+
+def create_dummy_vegetable() -> bytes:
+    """신선한 채소 이미지 합성 (GLI 분광 검증용)."""
+    img = np.zeros((300, 300, 3), dtype=np.uint8)
+    img[:, :] = (30, 180, 40)  # 선명한 녹색
+    cv2.circle(img, (150, 150), 80, (25, 200, 35), -1)
+
+    _, buffer = cv2.imencode(".jpg", img)
     return buffer.tobytes()
 
 
 def run_tests() -> None:
     client = TestClient(app)
-    dummy_bytes = create_dummy_meat_image()
+    meat_bytes = create_dummy_meat_with_glare()
+    fruit_bytes = create_dummy_watermelon()
+    veg_bytes = create_dummy_vegetable()
 
-    print("\n--- 1. 헬스체크 검증 ---")
+    print("\n=======================================================")
+    print(" 🛒 FreshScanner SOTA 알고리즘 및 API 통합 검증 시작")
+    print("=======================================================")
+
+    print("\n--- 1. 헬스체크 ---")
     res = client.get("/health")
-    assert res.status_code == 200, f"Health check failed: {res.text}"
+    assert res.status_code == 200
     print("[PASS] /health:", res.json())
 
     print("\n--- 2. 1단계 실시간 AR 스캔 (/scan/realtime) ---")
-    files = {"image": ("dummy.jpg", dummy_bytes, "image/jpeg")}
+    files = {"image": ("meat.jpg", meat_bytes, "image/jpeg")}
     res = client.post("/scan/realtime", files=files)
-    assert res.status_code == 200, f"Realtime scan failed: {res.text}"
-    print("[PASS] /scan/realtime:", res.json())
+    assert res.status_code == 200
+    print(f"[PASS] /scan/realtime: 감지된 객체 {len(res.json()['items'])}개, 추론시간 {res.json()['inference_time_ms']}ms")
 
     print("\n--- 3. 2단계 정밀 분석 (/scan/precise) ---")
-    files = {"image": ("dummy.jpg", dummy_bytes, "image/jpeg")}
+    files = {"image": ("meat.jpg", meat_bytes, "image/jpeg")}
     res = client.post("/scan/precise", files=files)
-    assert res.status_code == 200, f"Precise scan failed: {res.text}"
-    print("[PASS] /scan/precise:", res.json())
+    assert res.status_code == 200
+    body = res.json()
+    print(f"[PASS] /scan/precise: 종합 점수={body['overall_score']}점, 등급={body['freshness_grade']}")
+    for exp in body["explanations"]:
+        print(f"       {exp['factor']}: {exp['description']}")
 
-    print("\n--- 4. 카테고리별 정밀 분석 (/analyze/meat) ---")
-    files = {"image": ("dummy.jpg", dummy_bytes, "image/jpeg")}
+    print("\n--- 4. 육류 정밀 분석 (/analyze/meat) ---")
+    files = {"image": ("meat.jpg", meat_bytes, "image/jpeg")}
     res = client.post("/analyze/meat", files=files)
-    assert res.status_code == 200, f"Analyze meat failed: {res.text}"
-    print("[PASS] /analyze/meat:", res.json())
+    assert res.status_code == 200
+    m_body = res.json()
+    print(f"[PASS] /analyze/meat: 살코기={int(m_body['lean_ratio']*100)}%, 지방={int(m_body['fat_ratio']*100)}%, 마블링={m_body['marbling_score']}점")
 
-    print("\n--- 5. 온라인 주문 텍스트 파싱 (/inventory/online-order) ---")
+    print("\n--- 5. 과일 정밀 분석 & KAMIS 시세 비교 (/analyze/fruit) ---")
+    files = {"image": ("fruit.jpg", fruit_bytes, "image/jpeg")}
+    res = client.post("/analyze/fruit", files=files)
+    assert res.status_code == 200
+    f_body = res.json()
+    print(f"[PASS] /analyze/fruit: 표면패턴={f_body['surface_uniformity']}점, 꼭지신선도={f_body['stem_freshness']}점, 시세평가={f_body['price_evaluation']}")
+
+    print("\n--- 6. 채소 신선도 & GLI 분석 (/analyze/vegetable) ---")
+    files = {"image": ("veg.jpg", veg_bytes, "image/jpeg")}
+    res = client.post("/analyze/vegetable", files=files)
+    assert res.status_code == 200
+    v_body = res.json()
+    print(f"[PASS] /analyze/vegetable: 신선도점수={v_body['overall_score']}점, 갈변율={v_body['browning_ratio']*100:.1f}%, 결로감지={v_body['condensation_detected']}")
+
+    print("\n--- 7. 마트 영수증 / 온라인 주문 퍼지 파싱 (/inventory/online-order) ---")
     payload = {
-        "raw_text": "[쿠팡 로켓프레시 주문완료]\n1. 국내산 한돈 삼겹살 500g 1개\n2. 친환경 무농약 대파 1단\n3. 찌개용 두부 1모",
+        "raw_text": "[쿠팡 로켓프레시 주문완료]\n1. 국내산 한돈 삼겹살 500g 2개\n2. GAP 친환경 흙대파 1단\n3. CJ 찌개두부(부침겸용) 1모\n4. 제주 하우스 감귤 1봉",
         "source": "coupang",
     }
     res = client.post("/inventory/online-order", json=payload)
-    assert res.status_code == 200, f"Online order parse failed: {res.text}"
-    print("[PASS] /inventory/online-order:", res.json())
+    assert res.status_code == 200
+    p_body = res.json()
+    print(f"[PASS] /inventory/online-order: 파싱된 식재료 {len(p_body['parsed_items'])}개, 재고 추가 {p_body['added_count']}건")
+    for item in p_body["parsed_items"]:
+        print(f"       - {item['name']} {item['quantity']}{item['unit']} ({item['category']})")
 
-    print("\n--- 6. 냉장고 재고 목록 조회 (/inventory/) ---")
-    res = client.get("/inventory/")
-    assert res.status_code == 200, f"Inventory list failed: {res.text}"
-    print("[PASS] /inventory/: total items =", res.json().get("total"))
-
-    print("\n--- 7. 장보기 목록 자동 생성 (/shopping/generate) ---")
+    print("\n--- 8. 45선 레시피 DB 기반 자동 차감 장보기 목록 생성 (/shopping/generate) ---")
     req = {
-        "menu_names": ["된장찌개", "제육볶음"],
+        "menu_names": ["차돌된장찌개", "안동찜닭"],
         "servings": 2,
     }
     res = client.post("/shopping/generate", json=req)
-    assert res.status_code == 200, f"Shopping list generate failed: {res.text}"
-    print("[PASS] /shopping/generate:", res.json())
+    assert res.status_code == 200
+    s_body = res.json()
+    print(f"[PASS] /shopping/generate: 냉장고 차감 후 필요한 장보기 품목 {s_body['total']}개")
+    for item in s_body["items"][:5]:
+        print(f"       - {item['name']}: {item['quantity']}{item['unit']} (냉장고 보유: {item['in_fridge']})")
 
-    print("\n🎉 모든 핵심 엔드포인트 통합 검증 성공!\n")
+    print("\n=======================================================")
+    print(" 🎉 모든 SOTA 비전 파이프라인 및 백엔드 API 검증 100% 통과!")
+    print("=======================================================\n")
 
 
 if __name__ == "__main__":

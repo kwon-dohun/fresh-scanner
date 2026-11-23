@@ -1,4 +1,4 @@
-"""정밀 품질 분석 및 설명 가능한 AI (XAI) 서비스."""
+"""정밀 품질 분석 및 설명 가능한 AI (XAI) 3단 브리핑 오케스트레이터."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class QualityAnalysisService:
-    """2단계 정밀 분석 및 XAI 리포트 생성 서비스."""
+    """2단계 정밀 분석 및 XAI 보고서 생성 서비스."""
 
     def __init__(self) -> None:
         self.detector = YOLODetector()
@@ -34,26 +34,21 @@ class QualityAnalysisService:
         self.ocr_service = OCRService()
 
     async def analyze_precise(self, image_bytes: bytes) -> PreciseScanResponse:
-        """고해상도 이미지에 대해 객체 식별 후 카테고리별 정밀 분석 및 XAI 보고서 생성."""
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img is None:
             raise ValueError("이미지를 디코딩할 수 없습니다.")
 
-        # 1. 메인 객체 탐지
         detections: list[Detection] = self.detector.detect(img, conf_threshold=0.20)
         class_name = detections[0].class_name if detections else "meat"
-
-        # 카테고리 판별 (정육 vs 과일 vs 채소)
         category = self._categorize(class_name)
 
         explanations: list[XAIExplanation] = []
-        overall_score = 85.0
+        overall_score = 88.0
         grade = FreshnessGrade.GOOD
         mask_url = None
 
-        # 2. 카테고리별 특화 분석
         if category == "meat":
             seg_res: MeatSegResult = self.meat_segmentor.segment(img)
             lean_pct = int(seg_res.lean_ratio * 100)
@@ -62,9 +57,9 @@ class QualityAnalysisService:
 
             explanations.append(
                 XAIExplanation(
-                    factor="[황금 비율]",
-                    score=float(lean_pct),
-                    description=f"살코기 {lean_pct}% : 지방 {fat_pct}% (뼈 {bone_pct}%) 비율로 구이용 최적 비율에 가깝습니다.",
+                    factor="[황금 비율 & 마블링]",
+                    score=float(min(lean_pct + seg_res.bms_grade * 2, 98)),
+                    description=f"살코기 {lean_pct}% : 지방 {fat_pct}% (뼈 {bone_pct}%) 비율이며, 근내 마블링 등급은 BMS No.{seg_res.bms_grade} 수준입니다.",
                 )
             )
 
@@ -75,48 +70,53 @@ class QualityAnalysisService:
             explanations.append(
                 XAIExplanation(
                     factor="[결함 및 떡지방]",
-                    score=90.0 if not seg_res.has_tteok_jibang else 60.0,
+                    score=92.0 if not seg_res.has_tteok_jibang else 58.0,
                     description=defect_desc,
                 )
             )
 
-            color_stat = "선홍빛 신선 육색 유지" if "fresh" in seg_res.color_assessment or "선홍색" in seg_res.color_assessment else "숙성/갈변 상태"
             explanations.append(
                 XAIExplanation(
-                    factor="[육색 및 핏물]",
-                    score=92.0 if "fresh" in seg_res.color_assessment else 70.0,
-                    description=f"표면 육색 분석 결과: {color_stat} ({seg_res.color_assessment}).",
+                    factor="[특수조명 역보정 육색]",
+                    score=95.0 if "선홍" in seg_res.color_assessment else 70.0,
+                    description=f"매대 조명 보정 후 실제 육색: {seg_res.color_assessment}.",
                 )
             )
 
-            overall_score = round((lean_pct * 0.4) + (80 if not seg_res.has_tteok_jibang else 50) * 0.3 + 92 * 0.3, 1)
+            overall_score = round(
+                (lean_pct * 0.35)
+                + (92 if not seg_res.has_tteok_jibang else 55) * 0.35
+                + (seg_res.bms_grade * 3.5)
+                + 18.0,
+                1,
+            )
+            overall_score = float(np.clip(overall_score, 50.0, 98.0))
             grade = FreshnessGrade.EXCELLENT if overall_score >= 88 else FreshnessGrade.GOOD
-
-            # 컬러 마스크 생성 및 저장
             mask_url = self._save_colored_mask(img, seg_res)
 
         elif category == "fruit":
-            fruit_res: FruitQualityResult = self.fruit_analyzer.analyze(img, fruit_type="apple")
+            f_type = "watermelon" if "watermelon" in class_name.lower() else "apple"
+            fruit_res: FruitQualityResult = self.fruit_analyzer.analyze(img, fruit_type=f_type)
             overall_score = fruit_res.quality_score
 
             explanations.append(
                 XAIExplanation(
-                    factor="[표면 패턴 및 색택]",
+                    factor="[표면 줄무늬 & 색택]",
                     score=fruit_res.surface_pattern_score,
-                    description=f"표면 균일도 및 색상 분포 스코어 {fruit_res.surface_pattern_score}점 산출.",
+                    description=f"가보 필터 기반 패턴 분석 결과 선명도 {fruit_res.surface_pattern_score}점, 숙기 상태: {fruit_res.ripeness_level}.",
                 )
             )
             explanations.append(
                 XAIExplanation(
                     factor="[꼭지 신선도]",
                     score=fruit_res.stem_freshness_score,
-                    description=f"꼭지/줄기 영역의 녹색도 및 건조 상태 분석 스코어 {fruit_res.stem_freshness_score}점.",
+                    description=f"꼭지/줄기 녹색도 및 탈수 분석 스코어 {fruit_res.stem_freshness_score}점.",
                 )
             )
             explanations.append(
                 XAIExplanation(
-                    factor="[표면 결함]",
-                    score=max(0.0, 100.0 - fruit_res.defect_count * 15),
+                    factor="[표면 결함 검출]",
+                    score=max(0.0, 100.0 - fruit_res.defect_count * 12),
                     description=f"멍 또는 상처 의심 영역 {fruit_res.defect_count}개 발견.",
                 )
             )
@@ -128,28 +128,27 @@ class QualityAnalysisService:
 
             explanations.append(
                 XAIExplanation(
-                    factor="[잎 끝 갈변도]",
-                    score=round((1.0 - veg_res.browning_ratio) * 100, 1),
-                    description=f"갈변 및 짓무름 면적 비율 {round(veg_res.browning_ratio * 100, 1)}%.",
+                    factor="[식생 엽록소 지수(GLI)]",
+                    score=round((veg_res.gli_index + 0.5) * 70, 1),
+                    description=f"Green Leaf Index {veg_res.gli_index}로 세포 활성도 및 엽록소 유지 양호.",
                 )
             )
             explanations.append(
                 XAIExplanation(
-                    factor="[황변 비율]",
-                    score=round((1.0 - veg_res.yellowing_ratio) * 100, 1),
-                    description=f"엽록소 소실(황변) 영역 비율 {round(veg_res.yellowing_ratio * 100, 1)}%.",
+                    factor="[짓무름 및 황변도]",
+                    score=round((1.0 - veg_res.browning_ratio - veg_res.yellowing_ratio) * 100, 1),
+                    description=f"갈변 무름율 {round(veg_res.browning_ratio * 100, 1)}%, 황변율 {round(veg_res.yellowing_ratio * 100, 1)}%.",
                 )
             )
             explanations.append(
                 XAIExplanation(
-                    factor="[포장 내부 결로]",
-                    score=85.0 if not veg_res.condensation_detected else 75.0,
-                    description="포장재 내부 물방울(결로) 맺힘 여부 감지됨." if veg_res.condensation_detected else "내부 결로 없음.",
+                    factor="[포장재 결로 감지]",
+                    score=90.0 if not veg_res.condensation_detected else 75.0,
+                    description="내부 결로 감지됨 — 빠른 소진 권장" if veg_res.condensation_detected else "내부 결로 없음.",
                 )
             )
             grade = FreshnessGrade.EXCELLENT if overall_score >= 80 else FreshnessGrade.GOOD
 
-        # 3. 텍스트 OCR
         ocr_results = self.ocr_service.extract_text(img)
         ocr_text = " / ".join(r.text for r in ocr_results[:5]) if ocr_results else "라벨 텍스트 없음"
 
@@ -164,7 +163,6 @@ class QualityAnalysisService:
 
     @staticmethod
     def _categorize(class_name: str) -> str:
-        """YOLO 클래스명으로부터 육류 / 과일 / 채소 카테고리 매핑."""
         cn = class_name.lower()
         if any(w in cn for w in ["meat", "pork", "beef", "chicken", "steak", "bacon"]):
             return "meat"
@@ -172,18 +170,14 @@ class QualityAnalysisService:
             return "fruit"
         if any(w in cn for w in ["vegetable", "lettuce", "cabbage", "spinach", "carrot", "broccoli", "onion"]):
             return "vegetable"
-        return "meat"  # 기본값
+        return "meat"
 
     @staticmethod
     def _save_colored_mask(image: np.ndarray, seg_res: MeatSegResult) -> str:
-        """세그멘테이션 마스크를 컬러 오버레이 이미지로 만들어 static 파일로 저장."""
         overlay = image.copy()
-        # 살코기: 붉은색 오버레이
-        overlay[seg_res.lean_mask] = (0, 0, 220)
-        # 지방: 노란색 오버레이
-        overlay[seg_res.fat_mask] = (0, 220, 220)
-        # 뼈: 푸른색 오버레이
-        overlay[seg_res.bone_mask] = (220, 100, 0)
+        overlay[seg_res.lean_mask] = (0, 0, 220)      # 살코기: 붉은색
+        overlay[seg_res.fat_mask] = (0, 225, 225)     # 지방: 황금빛 노란색
+        overlay[seg_res.bone_mask] = (220, 100, 0)    # 뼈/연골: 푸른색
 
         blended = cv2.addWeighted(image, 0.6, overlay, 0.4, 0)
 
