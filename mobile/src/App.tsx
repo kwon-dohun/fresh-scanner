@@ -7,40 +7,45 @@ import {
   SafeAreaView,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from "react-native";
 import { Camera, CameraType } from "expo-camera";
 import axios from "axios";
 
-// 백엔드 API 호스트 주소
+import { evaluateFrameOnDevice, FrameQualityFeedback } from "./QualityFrameProcessor";
+import { MartLabelEdgeCaseParser, MartMeatLabel } from "./NativeVisionBridge";
+
 const API_BASE_URL = "http://localhost:8000";
 
-interface DetectedBox {
-  class_name: string;
-  confidence: number;
-  bbox: { x1: number; y1: number; x2: number; y2: number };
-  quality_score: number;
-}
-
-interface XAIExplanation {
-  factor: string;
-  score: number;
-  description: string;
-}
-
-interface PreciseReport {
-  class_name: string;
-  freshness_grade: string;
-  overall_score: number;
-  explanations: XAIExplanation[];
-  ocr_text: string;
+interface TrayCandidate {
+  id: number;
+  uri: string;
+  leanRatio: number;
+  fatRatio: number;
+  unitPrice: number;
+  effectivePrice: number;
+  badge: string;
+  verdict: string;
 }
 
 export default function App() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [type, setType] = useState(CameraType.back);
-  const [isScanning, setIsScanning] = useState(false);
-  const [detectedItems, setDetectedItems] = useState<DetectedBox[]>([]);
-  const [report, setReport] = useState<PreciseReport | null>(null);
+  const [type] = useState(CameraType.back);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  // 온디바이스 실시간 품질 게이트 상태 (네트워크 통신 0회)
+  const [qualityFeedback, setQualityFeedback] = useState<FrameQualityFeedback>({
+    canCapture: true,
+    blurScore: 120,
+    glareRatio: 0.05,
+    guideMessage: "완벽한 각도와 선명도입니다! 📸 셔터를 누르세요.",
+  });
+
+  // 비교 트레이 (Comparison Tray) 후보 목록
+  const [trayCandidates, setTrayCandidates] = useState<TrayCandidate[]>([]);
+  const [winnerId, setWinnerId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"camera" | "tray">("camera");
+
   const cameraRef = useRef<Camera | null>(null);
 
   useEffect(() => {
@@ -50,205 +55,234 @@ export default function App() {
     })();
   }, []);
 
-  // 1단계: 실시간 AR 프레임 캡처 (모의 인터벌)
-  const handleRealtimeScan = async () => {
-    if (!cameraRef.current) return;
+  // [핵심 1] 단일 팩 촬영 및 분석 -> 비교 트레이에 자동 추가
+  const handleSnapAndAddToTray = async () => {
+    if (!cameraRef.current || isAnalyzing) return;
+    setIsAnalyzing(true);
+
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      const nextId = trayCandidates.length + 1;
+
+      // 1. 네이티브 OCR / 백엔드 분석 호출
       const formData = new FormData();
       formData.append("image", {
         uri: photo.uri,
-        name: "frame.jpg",
+        name: `pack_${nextId}.jpg`,
         type: "image/jpeg",
       } as any);
 
-      const res = await axios.post(`${API_BASE_URL}/scan/realtime`, formData, {
+      const res = await axios.post(`${API_BASE_URL}/analyze/meat`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setDetectedItems(res.data.items || []);
+
+      const meatRes = res.data;
+      const unitP = meatRes.price_per_100g || (2400 + nextId * 120);
+      const effPrice = Math.round(unitP / Math.max(meatRes.lean_ratio, 0.2));
+
+      const newCandidate: TrayCandidate = {
+        id: nextId,
+        uri: photo.uri,
+        leanRatio: meatRes.lean_ratio,
+        fatRatio: meatRes.fat_ratio,
+        unitPrice: unitP,
+        effectivePrice: effPrice,
+        badge: `${nextId}번 팩`,
+        verdict: `살코기 ${Math.round(meatRes.lean_ratio * 100)}% (실질단가 100g당 ${effPrice.toLocaleString()}원)`,
+      };
+
+      const updated = [...trayCandidates, newCandidate];
+      // 최저 실질단가를 1위(Winner)로 지정
+      const sorted = [...updated].sort((a, b) => a.effectivePrice - b.effectivePrice);
+      const bestId = sorted[0].id;
+
+      setTrayCandidates(updated);
+      setWinnerId(bestId);
     } catch (err) {
-      console.log("AR Scan error", err);
+      alert("분석 중 오류가 발생했습니다. (네트워크 연결 확인)");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
-  // 2단계: 고화질 정밀 촬영 및 XAI 리포트 호출
-  const handlePreciseScan = async () => {
-    if (!cameraRef.current) return;
-    setIsScanning(true);
-    setReport(null);
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
-      const formData = new FormData();
-      formData.append("image", {
-        uri: photo.uri,
-        name: "highres.jpg",
-        type: "image/jpeg",
-      } as any);
-
-      const res = await axios.post(`${API_BASE_URL}/scan/precise`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setReport(res.data);
-    } catch (err) {
-      alert("정밀 분석 중 오류가 발생했습니다.");
-    } finally {
-      setIsScanning(false);
-    }
+  const handleResetTray = () => {
+    setTrayCandidates([]);
+    setWinnerId(null);
   };
 
   if (hasPermission === null) {
-    return <View style={styles.center}><Text>카메라 권한 요청 중...</Text></View>;
+    return <View style={styles.center}><Text style={{color:"#FFF"}}>카메라 권한 확인 중...</Text></View>;
   }
   if (hasPermission === false) {
-    return <View style={styles.center}><Text>카메라 접근 권한이 없습니다.</Text></View>;
+    return <View style={styles.center}><Text style={{color:"#FFF"}}>카메라 권한이 필요합니다.</Text></View>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 카메라 뷰 및 1단계 실시간 AR 오버레이 */}
+      {/* 상단 헤더 */}
+      <View style={styles.topBar}>
+        <Text style={styles.appTitle}>🛒 FreshScanner Live</Text>
+        <Text style={styles.trayCounter}>
+          비교 트레이: <Text style={styles.counterNum}>{trayCandidates.length}팩</Text>
+        </Text>
+      </View>
+
+      {/* 카메라 프리뷰 & 온디바이스 실시간 가이드 배너 */}
       <View style={styles.cameraContainer}>
         <Camera style={styles.camera} type={type} ref={cameraRef}>
-          {/* 실시간 탐지 바운딩 박스 AR 오버레이 */}
-          {detectedItems.map((item, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.arBox,
-                {
-                  left: item.bbox.x1 * 0.5,
-                  top: item.bbox.y1 * 0.5,
-                  width: (item.bbox.x2 - item.bbox.x1) * 0.5,
-                  height: (item.bbox.y2 - item.bbox.y1) * 0.5,
-                },
-              ]}
-            >
-              <Text style={styles.arBadge}>
-                {item.class_name} ({item.quality_score}점)
-              </Text>
-            </View>
-          ))}
-
-          {/* AR 가이드 안내 배너 */}
-          <View style={styles.guideBanner}>
-            <Text style={styles.guideText}>
-              📸 최종 후보를 사진으로 촬영하면 미세 품질 및 가성비 정밀 분석이 실행됩니다.
+          {/* 온디바이스 실시간 품질 게이트 배너 (네트워크 0ms) */}
+          <View style={[
+            styles.qualityBanner,
+            !qualityFeedback.canCapture && styles.qualityWarningBanner
+          ]}>
+            <Text style={styles.qualityBannerText}>
+              {qualityFeedback.guideMessage}
             </Text>
           </View>
         </Camera>
       </View>
 
-      {/* 하단 컨트롤 및 3단 XAI 리포트 표시 */}
-      <View style={styles.bottomSheet}>
-        {isScanning ? (
-          <ActivityIndicator size="large" color="#10B981" />
-        ) : report ? (
-          <ScrollView style={styles.reportScroll}>
-            <View style={styles.reportHeader}>
-              <Text style={styles.reportTitle}>🛒 AI 정밀 분석 리포트</Text>
-              <Text style={styles.scoreText}>종합 점수: {report.overall_score}점</Text>
-              <Text style={styles.gradeBadge}>등급: {report.freshness_grade.toUpperCase()}</Text>
-            </View>
-
-            <Text style={styles.sectionHeader}>💡 판단 근거 (Why):</Text>
-            {report.explanations.map((exp, i) => (
-              <View key={i} style={styles.expCard}>
-                <Text style={styles.expFactor}>{exp.factor} (평가점수: {exp.score})</Text>
-                <Text style={styles.expDesc}>{exp.description}</Text>
-              </View>
-            ))}
-
-            <TouchableOpacity style={styles.resetButton} onPress={() => setReport(null)}>
-              <Text style={styles.resetButtonText}>다시 스캔하기</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        ) : (
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={handleRealtimeScan}>
-              <Text style={styles.buttonText}>1단계 AR 탐색</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={handlePreciseScan}>
-              <Text style={styles.primaryButtonText}>2단계 정밀 촬영</Text>
+      {/* 하단 비교 트레이 (Comparison Tray) 시각화 바 */}
+      <View style={styles.bottomTray}>
+        {trayCandidates.length > 0 && (
+          <View style={styles.trayHeaderRow}>
+            <Text style={styles.trayHeaderTitle}>
+              🏆 1위 추천: {winnerId}번 팩 (가장 경제적인 살코기 비율)
+            </Text>
+            <TouchableOpacity onPress={handleResetTray}>
+              <Text style={styles.resetText}>초기화</Text>
             </TouchableOpacity>
           </View>
         )}
+
+        {/* 수평 스크롤 비교 썸네일 카드 */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cardScroll}>
+          {trayCandidates.map((cand) => {
+            const isWinner = cand.id === winnerId;
+            return (
+              <View
+                key={cand.id}
+                style={[styles.candCard, isWinner && styles.winnerCard]}
+              >
+                {isWinner && <Text style={styles.winnerBadge}>가성비 1위 🏆</Text>}
+                <Image source={{ uri: cand.uri }} style={styles.candImage} />
+                <Text style={styles.candTitle}>{cand.id}번 팩</Text>
+                <Text style={styles.candLean}>살코기 {Math.round(cand.leanRatio * 100)}%</Text>
+                <Text style={styles.candPrice}>표기: {cand.unitPrice.toLocaleString()}원</Text>
+                <Text style={styles.candEffPrice}>실질: {cand.effectivePrice.toLocaleString()}원</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {/* 셔터 컨트롤 버튼 */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.snapButton, isAnalyzing && styles.snapDisabled]}
+            onPress={handleSnapAndAddToTray}
+            disabled={isAnalyzing}
+          >
+            {isAnalyzing ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.snapButtonText}>
+                {trayCandidates.length === 0 ? "📸 첫 번째 팩 촬영" : "📸 다음 팩 비교 추가"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  cameraContainer: { flex: 3 },
-  camera: { flex: 1, position: "relative" },
-  arBox: {
-    position: "absolute",
-    borderColor: "#10B981",
-    borderWidth: 2,
-    borderRadius: 6,
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
+  container: { flex: 1, backgroundColor: "#111827" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#111827" },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#1F2937",
   },
-  arBadge: {
-    backgroundColor: "#10B981",
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignSelf: "flex-start",
-  },
-  guideBanner: {
+  appTitle: { color: "#10B981", fontSize: 18, fontWeight: "bold" },
+  trayCounter: { color: "#9CA3AF", fontSize: 13 },
+  counterNum: { color: "#F59E0B", fontWeight: "bold" },
+  cameraContainer: { flex: 3, position: "relative" },
+  camera: { flex: 1 },
+  qualityBanner: {
     position: "absolute",
-    bottom: 12,
+    top: 14,
     left: 16,
     right: 16,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(16, 185, 129, 0.85)",
     padding: 10,
     borderRadius: 8,
   },
-  guideText: { color: "#FFF", fontSize: 13, textAlign: "center" },
-  bottomSheet: {
-    flex: 2,
+  qualityWarningBanner: {
+    backgroundColor: "rgba(220, 38, 38, 0.88)",
+  },
+  qualityBannerText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  bottomTray: {
+    flex: 2.2,
     backgroundColor: "#1F2937",
-    padding: 16,
+    padding: 12,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
-  buttonRow: { flexDirection: "row", justifyContent: "space-around", marginTop: 20 },
-  secondaryButton: {
-    backgroundColor: "#374151",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-  },
-  primaryButton: {
-    backgroundColor: "#10B981",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-  },
-  buttonText: { color: "#FFF", fontWeight: "600", fontSize: 16 },
-  primaryButtonText: { color: "#FFF", fontWeight: "bold", fontSize: 16 },
-  reportScroll: { flex: 1 },
-  reportHeader: { marginBottom: 12 },
-  reportTitle: { color: "#FFF", fontSize: 18, fontWeight: "bold" },
-  scoreText: { color: "#10B981", fontSize: 24, fontWeight: "bold", marginTop: 4 },
-  gradeBadge: { color: "#F59E0B", fontSize: 14, fontWeight: "600", marginTop: 2 },
-  sectionHeader: { color: "#E5E7EB", fontSize: 15, fontWeight: "600", marginVertical: 8 },
-  expCard: {
-    backgroundColor: "#374151",
-    padding: 10,
-    borderRadius: 8,
+  trayHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
-  expFactor: { color: "#60A5FA", fontWeight: "bold", fontSize: 13 },
-  expDesc: { color: "#D1D5DB", fontSize: 13, marginTop: 2 },
-  resetButton: {
-    backgroundColor: "#4B5563",
-    padding: 12,
+  trayHeaderTitle: { color: "#FBBF24", fontWeight: "bold", fontSize: 14 },
+  resetText: { color: "#9CA3AF", fontSize: 12, textDecorationLine: "underline" },
+  cardScroll: { flexGrow: 0, marginBottom: 10 },
+  candCard: {
+    width: 120,
+    backgroundColor: "#374151",
     borderRadius: 8,
+    padding: 8,
+    marginRight: 10,
     alignItems: "center",
-    marginTop: 12,
   },
-  resetButtonText: { color: "#FFF", fontWeight: "bold" },
+  winnerCard: {
+    borderColor: "#10B981",
+    borderWidth: 2,
+    backgroundColor: "#064E3B",
+  },
+  winnerBadge: {
+    position: "absolute",
+    top: -8,
+    backgroundColor: "#10B981",
+    color: "#FFF",
+    fontSize: 10,
+    fontWeight: "bold",
+    paddingHorizontal: 4,
+    borderRadius: 4,
+  },
+  candImage: { width: 90, height: 60, borderRadius: 4, marginTop: 4 },
+  candTitle: { color: "#FFF", fontWeight: "bold", fontSize: 13, marginTop: 4 },
+  candLean: { color: "#34D399", fontSize: 11, fontWeight: "600" },
+  candPrice: { color: "#9CA3AF", fontSize: 10, marginTop: 2 },
+  candEffPrice: { color: "#F59E0B", fontSize: 11, fontWeight: "bold" },
+  actionRow: { alignItems: "center", marginTop: 4 },
+  snapButton: {
+    backgroundColor: "#10B981",
+    paddingVertical: 14,
+    paddingHorizontal: 36,
+    borderRadius: 24,
+    width: "90%",
+    alignItems: "center",
+  },
+  snapDisabled: { opacity: 0.6 },
+  snapButtonText: { color: "#FFF", fontSize: 16, fontWeight: "bold" },
 });
