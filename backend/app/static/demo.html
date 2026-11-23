@@ -797,6 +797,13 @@
     async function triggerBackendVerification(canvas, category) {
       const now = performance.now();
       if (isBackendVerifying || (now - lastBackendCall < 2000)) return;
+    // 백엔드 OpenCV & Colab 파인튜닝 ONNX 딥러닝 실시간 비동기 연동 (1.5초 간격)
+    let isBackendVerifying = false;
+    let lastBackendCall = 0;
+
+    async function triggerBackendVerification(canvas, category) {
+      const now = performance.now();
+      if (isBackendVerifying || (now - lastBackendCall < 1500)) return;
       lastBackendCall = now;
       isBackendVerifying = true;
 
@@ -806,15 +813,36 @@
           const formData = new FormData();
           formData.append('image', blob, 'webcam_frame.jpg');
 
+          // 1. Colab에서 파인튜닝된 전용 ONNX 딥러닝 모델 호출
+          try {
+            const dlRes = await fetch('/analyze/produce/deeplearning', { method: 'POST', body: formData });
+            if (dlRes.ok) {
+              const dlData = await dlRes.json();
+              const badge = document.getElementById('sheetBackendBadge');
+              const pill = document.getElementById('aiModelPill');
+              if (badge && dlData && dlData.korean_name) {
+                const confPct = Math.round((dlData.confidence || 0.85) * 100);
+                badge.innerText = `🤖 Colab 딥러닝: ${dlData.korean_name} (${confPct}% 확정 · 당도 ${dlData.brix} Brix)`;
+              }
+              if (pill && dlData && dlData.korean_name) {
+                pill.innerText = `🤖 Colab 딥러닝: ${dlData.korean_name}`;
+                pill.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+              }
+            }
+          } catch (e) {
+            // 무시하고 기본 루프 유지
+          }
+
+          // 2. OpenCV 표면 균일도 및 결함 검증
           const endpoint = (category === 'meat') ? '/analyze/meat' : (category === 'vegetable' ? '/analyze/vegetable' : '/analyze/fruit');
           const res = await fetch(endpoint, { method: 'POST', body: formData });
           if (res.ok) {
             const data = await res.json();
             const badge = document.getElementById('sheetBackendBadge');
-            if (badge && data) {
+            if (badge && data && !badge.innerText.includes('Colab')) {
               const defPct = Math.round((data.defect_ratio || 0) * 100);
               const unif = Math.round(data.surface_uniformity || 88);
-              badge.innerText = `⚡ OpenCV 백엔드: 표면균일 ${unif}점 · 결함율 ${defPct}% (${data.freshness_grade || 'good'})`;
+              badge.innerText = `⚡ OpenCV & 딥러닝: 표면균일 ${unif}점 · 결함율 ${defPct}% (${data.freshness_grade || 'good'})`;
             }
           }
           isBackendVerifying = false;

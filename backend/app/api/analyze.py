@@ -14,8 +14,24 @@ from backend.app.schemas import (
 from backend.app.services.meat_analyzer import MeatAnalyzerService
 from backend.app.services.fruit_analyzer import FruitAnalyzerService
 from backend.app.services.vegetable_analyzer import VegetableAnalyzerService
+from backend.app.services.onnx_produce_classifier import produce_classifier
+import cv2
+import numpy as np
 
 router = APIRouter(prefix="/analyze", tags=["분석"])
+
+
+@router.post("/produce/deeplearning")
+async def analyze_produce_deeplearning(image: UploadFile = File(...)) -> dict:
+    """Colab에서 파인튜닝된 ONNX 딥러닝 모델로 품목(감귤/사과/삼겹살/채소) 및 품질을 판별."""
+    image_bytes = await image.read()
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"error": "Invalid image payload"}
+
+    result = produce_classifier.predict(img)
+    return result
 
 
 @router.post("/meat", response_model=MeatAnalysisResult)
