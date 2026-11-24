@@ -26,9 +26,10 @@ uploads/
 
 # ML model weights
 models/*.pt
-models/*.onnx
 models/*.pth
 models/*.bin
+models/*.onnx.data
+!models/fresh_scanner_korean_produce_int8.onnx
 
 # IDE
 .vscode/

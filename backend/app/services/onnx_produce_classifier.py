@@ -9,6 +9,8 @@ from typing import Any
 import cv2
 import numpy as np
 import onnxruntime as ort
+from backend.app.models.optical_calibrator import WhiteLabelReferenceWB
+from backend.app.models.part_geometry_engine import PartGeometryEngine
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,11 @@ class OnnxProduceClassifier:
 
         h, w = img_bgr.shape[:2]
 
+        # [0단계 광학 캘리브레이션 게이트]
+        # 정육 코너 붉은 LED 조명 왜곡을 방지하기 위해 가격 라벨 백색 기준점(White Reference) 자동 보정
+        calibrated_img, is_wb_calibrated = WhiteLabelReferenceWB.calibrate_with_label(img_bgr)
+        target_img = calibrated_img if is_wb_calibrated else img_bgr
+
         if not self.is_available:
             # 폴백: 색상 기반 기본 판정
             return {
@@ -72,10 +79,11 @@ class OnnxProduceClassifier:
                 "quality_score": 88,
                 "brix": 12.5,
                 "engine": "fallback_vision",
+                "optical_calibrated": is_wb_calibrated,
             }
 
         # 전처리: BGR -> RGB, 224x224 Resize, ImageNet 정규화
-        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        img_rgb = cv2.cvtColor(target_img, cv2.COLOR_BGR2RGB)
         resized = cv2.resize(img_rgb, (224, 224)).astype(np.float32) / 255.0
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -92,8 +100,8 @@ class OnnxProduceClassifier:
         # [도메인 지식 분광 앙상블 (Spectral Prior Ensemble)]
         # 카메라 영상의 픽셀 분광 특성(카로티노이드, 안토시아닌, 엽록소)을 신경망 Logits에 융합
         # 중앙 60% 영역 샘플링으로 배경 배제
-        h, w = img_bgr.shape[:2]
-        crop = img_bgr[int(h*0.2):int(h*0.8), int(w*0.2):int(w*0.8)] if h >= 20 and w >= 20 else img_bgr
+        h, w = target_img.shape[:2]
+        crop = target_img[int(h*0.2):int(h*0.8), int(w*0.2):int(w*0.8)] if h >= 20 and w >= 20 else target_img
         avg_b = float(np.mean(crop[:, :, 0]))
         avg_g = float(np.mean(crop[:, :, 1]))
         avg_r = float(np.mean(crop[:, :, 2]))
@@ -144,7 +152,23 @@ class OnnxProduceClassifier:
 
         all_probs = {cls_item["id"]: round(float(probs[i]), 3) for i, cls_item in enumerate(CLASSES)}
 
-        return {
+        # [3단계 전문가 기하학 선별 공식 엔진 연동]
+        expert_eval = None
+        try:
+            if top_class["id"] == "pork_belly":
+                expert_eval = PartGeometryEngine.evaluate_pork_belly(target_img)
+            elif top_class["id"] == "korean_apple":
+                expert_eval = PartGeometryEngine.evaluate_apple(target_img)
+            elif top_class["id"] == "korean_mandarin":
+                expert_eval = PartGeometryEngine.evaluate_mandarin(target_img)
+        except Exception as e:
+            logger.warning(f"전문가 기하학 평가 중 오류 발생: {e}")
+
+        # 전문가 공식 점수로 품질 점수 정밀 보정
+        if expert_eval:
+            quality_score = expert_eval.total_score
+
+        res = {
             "class_id": top_class["id"],
             "korean_name": top_class["kr"],
             "category": top_class["category"],
@@ -153,7 +177,23 @@ class OnnxProduceClassifier:
             "brix": brix,
             "all_probabilities": all_probs,
             "engine": f"Colab_DeepLearning_{self.model_path.name if self.model_path else 'onnx'}",
+            "optical_calibrated": is_wb_calibrated,
         }
+
+        if expert_eval:
+            res["expert_evaluation"] = {
+                "total_score": expert_eval.total_score,
+                "rank_title": expert_eval.rank_title,
+                "core_evidence": expert_eval.core_evidence,
+                "feature_table": expert_eval.feature_table,
+                "verdict_summary": expert_eval.verdict_summary,
+                "geometry_boxes": expert_eval.geometry_boxes,
+                "guide_prompt": expert_eval.guide_prompt,
+                "veto_alerts": expert_eval.veto_alerts,
+                "factor_breakdown": expert_eval.factor_breakdown,
+            }
+
+        return res
 
 
 # 싱글톤 인스턴스

@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from backend.app.models.meat_segmentor import MeatSegmentor, MeatSegResult
+from backend.app.models.optical_calibrator import WhiteLabelReferenceWB
 from backend.app.services.ocr_service import OCRService, MeatLabel
 from backend.app.schemas import MeatAnalysisResult, FreshnessGrade
 
@@ -28,8 +29,12 @@ class MeatAnalyzerService:
         if img is None:
             raise ValueError("이미지를 디코딩할 수 없습니다.")
 
+        # 0. 정육 팩 흰색 가격 라벨 기준 광학 화이트밸런스 보정 (붉은 조명 보정)
+        calibrated_img, is_wb_calibrated = WhiteLabelReferenceWB.calibrate_with_label(img)
+        analysis_img = calibrated_img if is_wb_calibrated else img
+
         # 1. 픽셀 단위 세그멘테이션
-        seg_res: MeatSegResult = self.segmentor.segment(img)
+        seg_res: MeatSegResult = self.segmentor.segment(analysis_img)
 
         # 2. 정육 라벨 OCR 분석
         label: MeatLabel | None = self.ocr_service.extract_meat_label(img)
