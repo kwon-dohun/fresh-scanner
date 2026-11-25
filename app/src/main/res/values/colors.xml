@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ink">#14201A</color>
+    <color name="accent">#E0661A</color>
+    <color name="surface">#F6F7F5</color>
+    <color name="muted">#55625B</color>
+    <color name="track">#DDE2DD</color>
+    <color name="pill">#E614201A</color>
+    <color name="scrim">#66000000</color>
+</resources>

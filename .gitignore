@@ -1,56 +1,11 @@
-# ============================================
-# FreshScanner — .gitignore
-# ============================================
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyc
-*.pyo
-
-# Virtual environment
-venv/
-.venv/
-env/
-
-# Environment variables
-.env
-
-# Database
-*.db
-*.db-journal
-
-# Uploads & user data
-uploads/
-
-# ML model weights
-models/*.pt
-models/*.pth
-models/*.bin
-models/*.onnx.data
-!models/fresh_scanner_korean_produce_int8.onnx
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Node / Mobile
-node_modules/
-dist/
-build/
-.expo/
+/local.properties
+.gradle/
+/build/
+/app/build/
 *.jks
 *.keystore
-
-# Misc
-*.log
-*.tmp
-.coverage
-htmlcov/
+keystore.properties
+.idea/
+*.iml
+__pycache__/
+*.pyc
